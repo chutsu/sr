@@ -23,7 +23,7 @@ static char *test_target = NULL;
 /* MUNIT */
 #define MU_CHECK(TEST)                                                         \
   do {                                                                         \
-    if ((TEST) == 0) {                                                     		 \
+    if ((TEST) == 0) {                                                          \
       printf("%sERROR!%s [%s:%d] %s %sFAILED!%s\n",                            \
              KRED,                                                             \
              KNRM,                                                             \
@@ -104,8 +104,8 @@ static char *test_target = NULL;
 #define MU_RUN_TESTS(TEST_SUITE)                                               \
   int main(int argc, char *argv[]) {                                           \
     if (argc == 3 && strcmp(argv[1], "--target") == 0) {                       \
-      test_target = argv[2];                                      						 \
-      printf("%sTEST TARGET [%s]%s\n", KYEL, test_target, KNRM);       				 \
+      test_target = argv[2];                                                   \
+      printf("%sTEST TARGET [%s]%s\n", KYEL, test_target, KNRM);                \
     }                                                                          \
                                                                                \
     TEST_SUITE();                                                              \
