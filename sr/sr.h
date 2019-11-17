@@ -115,9 +115,12 @@ void terminal_set_print(const terminal_set_t *ts) {
 
 /* Node Types */
 #define FUNC_NODE 0
-#define TERM_INPUT_NODE 1
-#define TERM_CONST_NODE 2
-#define TERM_EVAL_NODE 3
+#define TERM_NODE 1
+
+/* Data Types */
+#define IMPUT 0
+#define CONST 1
+#define RCONST 2
 
 typedef struct node_t {
   /* General */
@@ -126,6 +129,7 @@ typedef struct node_t {
   int nth_child;
 
   /* Terminal node specific */
+  int data_type;
   double value;
   const char *input_name;
 
@@ -165,6 +169,29 @@ void node_clear(node_t *n) {
   node_setup(n);
 }
 
+node_t *node_new() {
+  return malloc(sizeof(node_t));
+}
+
+static void node_delete_traverse(node_t *n) {
+  if (n->type == TERM_NODE) {
+    free(n);
+    n = NULL;
+    return;
+  }
+
+  for (int i = 0; i < n->arity; i++) {
+    node_delete_traverse(n->children[i]);
+  }
+  free(n);
+  n = NULL;
+}
+
+void node_delete(node_t *n) {
+  node_delete_traverse(n);
+  n = NULL;
+}
+
 void node_print(const node_t *n) {
   assert(n != NULL);
 
@@ -181,20 +208,26 @@ void node_print(const node_t *n) {
     case POW: printf("POW\t"); break;
     case EXP: printf("EXP\t"); break;
     case LOG: printf("LOG\t"); break;
-    default: printf("Opps! Invalid function type[%d]!", n->function); break;
+    default:
+      printf("Opps! Invalid function type[%d]!", n->function);
+      break;
     }
     printf("arity: %d\n", n->arity);
     break;
-  case TERM_INPUT_NODE:
-    printf("input\t");
-    printf("input_name: %s\n", n->input_name);
-    break;
-  case TERM_CONST_NODE:
-    printf("const\t");
-    printf("value: %f\n", n->value);
+  case TERM_NODE:
+    switch (n->data_type) {
+    case INPUT:
+      printf("input\t");
+      printf("input_name: %s\n", n->input_name);
+      break;
+    case CONST:
+      printf("const\t");
+      printf("value: %f\n", n->value);
+      break;
+    }
     break;
   default:
-    printf("Opps! Invalid node type [%d]!", n->type);
+    printf("Opps! Invalid node type [%d]!\n", n->type);
     break;
   }
 }
@@ -210,14 +243,16 @@ void node_setup_func(node_t *n, const int function, const int arity) {
 void node_setup_input(node_t *n, const char *input_name) {
   assert(n != NULL);
   node_setup(n);
-  n->type = TERM_INPUT_NODE;
+  n->type = TERM_NODE;
+  n->data_type = INPUT;
   n->input_name = input_name;
 }
 
 void node_setup_const(node_t *n, double value) {
   assert(n != NULL);
   node_setup(n);
-  n->type = TERM_CONST_NODE;
+  n->type = TERM_NODE;
+  n->data_type = CONST;
   n->value = value;
 }
 
@@ -261,7 +296,6 @@ void random_term(const terminal_set_t *ts, node_t *n) {
  ******************************************************************************/
 
 typedef struct tree_t {
-  node_t nodes[MAX_TREE_SIZE];
   node_t *root;
   int size;
   int depth;
@@ -272,10 +306,7 @@ typedef struct tree_t {
 } tree_t;
 
 void tree_setup(tree_t *t) {
-  for (int i = 0; i < MAX_TREE_SIZE; i++) {
-    node_clear(&t->nodes[i]);
-  }
-  t->root = &t->nodes[0];
+  t->root = NULL;
   t->size = 0;
   t->depth = 0;
 
@@ -285,7 +316,35 @@ void tree_setup(tree_t *t) {
 }
 
 void tree_clear(tree_t *t) {
+  if (t->root != NULL) {
+    node_delete(t->root);
+  }
   tree_setup(t);
+}
+
+tree_t *tree_new() {
+  tree_t *t = malloc(sizeof(tree_t));
+  tree_setup(t);
+  return t;
+}
+
+void tree_delete(tree_t *t) {
+  tree_clear(t);
+  free(t);
+}
+
+static void tree_print_traverse(const node_t *n) {
+  if (n->type == TERM_NODE) {
+    printf("  ");
+    node_print(n);
+    return;
+  }
+
+  printf("  ");
+  node_print(n);
+  for (int i = 0; i < n->arity; i++) {
+    tree_print_traverse(n->children[i]);
+  }
 }
 
 void tree_print(const tree_t *t) {
@@ -295,10 +354,7 @@ void tree_print(const tree_t *t) {
   printf("tree.score: %f\n", t->score);
   printf("tree.hits: %d\n", t->hits);
   printf("tree.nodes:\n");
-  for (int i = 0; i < t->size; i++) {
-    printf("  ");
-    node_print(&t->nodes[i]);
-  }
+  tree_print_traverse(t->root);
 }
 
 /* Tree Build Methods */
@@ -327,7 +383,7 @@ static void tree_build(const int method,
   for (int i = 0; i < n->arity; i++) {
     if (curr_depth == max_depth) {
       /* Create terminal node */
-      node_t *child = &t->nodes[t->size];
+      node_t *child = node_new();
       random_term(ts, child);
       child->parent = n;
       child->nth_child = i;
@@ -336,7 +392,7 @@ static void tree_build(const int method,
 
     } else if (method == GROW && randf(0, 1.0) > 0.5) {
       /* Create terminal node */
-      node_t *child = &t->nodes[t->size];
+      node_t *child = node_new();
       random_term(ts, child);
       child->parent = n;
       child->nth_child = i;
@@ -345,7 +401,7 @@ static void tree_build(const int method,
 
     } else {
       /* Create function node */
-      node_t *child = &t->nodes[t->size];
+      node_t *child = node_new();
       random_func(fs, child);
       child->parent = n;
       child->nth_child = i;
@@ -371,6 +427,7 @@ int tree_generate(const int method,
 
   /* Generate tree */
   tree_setup(t);
+  t->root = node_new();
   random_func(fs, t->root);
   t->size++;
   t->depth++;
@@ -390,7 +447,6 @@ int tree_generate(const int method,
     default:
       return -1;
   }
-  /* tree_update(tree); */
 
   return 0;
 }
@@ -421,20 +477,44 @@ void tree_update(tree_t *t) {
   tree_update_traverse(t, t->root, 0);
 }
 
+static node_t *tree_get_node_traverse(node_t *n,
+                                      const int target_idx,
+                                      int *curr_idx) {
+  if (target_idx == *curr_idx) {
+    return n;
+  }
+
+  for (int i = 0; i < n->arity; i++) {
+    *curr_idx += 1;
+    node_t *child = n->children[i];
+    node_t *retval = tree_get_node_traverse(child, target_idx, curr_idx);
+    if (retval != NULL) {
+      return retval;
+    }
+  }
+
+  return NULL;
+}
+
+node_t *tree_get_node(const tree_t *t, const int idx) {
+  int curr_idx = 0;
+  return tree_get_node_traverse(t->root, idx, &curr_idx);
+}
+
 int tree_select_rand_func(const tree_t *t) {
   assert(t != NULL);
 
   int attempts = 0;
   int idx = 0;
-
 try_again:
-    idx = randi(0, t->size - 1);
-    if (t->nodes[idx].type != FUNC_NODE) {
-      attempts++;
-      goto try_again;
-    } else if (attempts >= 100) {
-      FATAL("Failed to get a function!");
-    }
+  idx = randi(0, t->size - 1);
+  node_t *n = tree_get_node(t, idx);
+  if (n->type != FUNC_NODE) {
+    attempts++;
+    goto try_again;
+  } else if (attempts >= 100) {
+    FATAL("Failed to get a function!");
+  }
 
   return idx;
 }
@@ -488,9 +568,9 @@ void point_mutation(const function_set_t *fs,
                     const terminal_set_t *ts,
                     tree_t *t) {
   const int idx = randi(0, t->size);
-  node_t *n = &t->nodes[idx];
+  node_t *n = tree_get_node(t, idx);
 
-  if (n->type == TERM_INPUT_NODE || n->type == TERM_CONST_NODE) {
+  if (n->type == TERM_NODE) {
     mutate_term_node(ts, n);
   } else if (n->type == FUNC_NODE) {
     mutate_func_node(fs, n);
@@ -501,9 +581,22 @@ void point_mutation(const function_set_t *fs,
  *                             CROSSOVER OPERATORS
  ******************************************************************************/
 
-int point_crossover(tree_t *t1, tree_t *t2) {
+void point_crossover(tree_t *t1, tree_t *t2) {
+  const int t1_pt = randi(1, t1->size - 1);
+  const int t2_pt = randi(1, t2->size - 1);
 
-  return 0;
+  node_t *t1_subtree = tree_get_node(t1, t1_pt);
+  node_t *t2_subtree = tree_get_node(t2, t2_pt);
+  const int t1_nth_child = t1_subtree->nth_child;
+  const int t2_nth_child = t2_subtree->nth_child;
+  node_t *t1_parent = t1_subtree->parent;
+  node_t *t2_parent = t2_subtree->parent;
+
+  t1_parent->children[t1_nth_child] = t2_subtree;
+  t2_parent->children[t2_nth_child] = t1_subtree;
+
+  t1_subtree->parent = t2_parent;
+  t2_subtree->parent = t1_parent;
 }
 
 #endif

@@ -32,6 +32,10 @@ int test_node_setup() {
   return 0;
 }
 
+int test_node_new_and_delete() {
+  return 0;
+}
+
 int test_node_clear() {
   node_t n;
   node_clear(&n);
@@ -72,8 +76,20 @@ int test_node_setup_input() {
   node_t n;
   node_setup_input(&n, "x");
 
-  MU_CHECK(n.type == TERM_INPUT_NODE);
+  MU_CHECK(n.type == TERM_NODE);
+  MU_CHECK(n.data_type == INPUT);
   MU_CHECK(strcmp(n.input_name, "x") == 0);
+
+  return 0;
+}
+
+int test_node_setup_const() {
+  node_t n;
+  node_setup_const(&n, 1.0);
+
+  MU_CHECK(n.type == TERM_NODE);
+  MU_CHECK(n.data_type == CONST);
+  MU_CHECK(fltcmp(n.value, 1.0) == 0);
 
   return 0;
 }
@@ -127,7 +143,7 @@ int test_random_term() {
 
   /* Assert */
   node_print(&n);
-  MU_CHECK(n.type == TERM_INPUT_NODE || n.type == TERM_CONST_NODE);
+  MU_CHECK(n.type == TERM_NODE);
 
   return 0;
 }
@@ -140,7 +156,7 @@ int test_tree_setup() {
   tree_t t;
   tree_setup(&t);
 
-  MU_CHECK(t.root == &t.nodes[0]);
+  MU_CHECK(t.root == NULL);
   MU_CHECK(t.size == 0);
   MU_CHECK(t.depth == 0);
 
@@ -153,9 +169,10 @@ int test_tree_setup() {
 
 int test_tree_clear() {
   tree_t t;
+  tree_setup(&t);
   tree_clear(&t);
 
-  MU_CHECK(t.root == &t.nodes[0]);
+  MU_CHECK(t.root == NULL);
   MU_CHECK(t.size == 0);
   MU_CHECK(t.depth == 0);
 
@@ -202,7 +219,8 @@ int test_tree_generate() {
 
   /* Print tree */
   tree_print(&t);
-  MU_CHECK(t.nodes[t.size + 1].type == -1);
+  tree_clear(&t);
+  /* MU_CHECK(t.nodes[t.size + 1].type == -1); */
 
   return 0;
 }
@@ -211,31 +229,136 @@ int test_tree_update() {
   /* Setup */
   tree_t t;
   tree_setup(&t);
-  t.root = &t.nodes[0];
 
   /* Root */
-  node_setup_func(&t.nodes[0], ADD, 2);
+  node_t *root = node_new();
+  node_setup_func(root, ADD, 2);
+  t.root = root;
 
   /* Depth 1 - Left */
-  node_setup_func(&t.nodes[1], SUB, 2);
-  node_setup_const(&t.nodes[2], 1.0);
-  node_setup_const(&t.nodes[3], 2.0);
-  t.nodes[0].children[0] = &t.nodes[1];
-  t.nodes[1].children[0] = &t.nodes[2];
-  t.nodes[1].children[1] = &t.nodes[3];
+  node_t *sub = node_new();
+  node_t *k1 = node_new();
+  node_t *k2 = node_new();
+
+  node_setup_func(sub, SUB, 2);
+  node_setup_const(k1, 1.0);
+  node_setup_const(k2, 2.0);
+
+  root->children[0] = sub;
+  sub->children[0] = k1;
+  sub->children[1] = k2;
 
   /* Depth 1 - Right */
-  node_setup_func(&t.nodes[4], MUL, 2);
-  node_setup_const(&t.nodes[5], 3.0);
-  node_setup_const(&t.nodes[6], 4.0);
-  t.nodes[0].children[1] = &t.nodes[4];
-  t.nodes[4].children[0] = &t.nodes[5];
-  t.nodes[4].children[1] = &t.nodes[6];
+  node_t *mul = node_new();
+  node_t *k3 = node_new();
+  node_t *k4 = node_new();
+  node_setup_func(mul, MUL, 2);
+  node_setup_const(k3, 3.0);
+  node_setup_const(k4, 4.0);
 
-  printf("size of tree: %ld\n", sizeof(t));
+  root->children[1] = mul;
+  mul->children[0] = k3;
+  mul->children[1] = k4;
 
-  tree_update(&t);
   tree_print(&t);
+  tree_update(&t);
+
+  return 0;
+}
+
+int test_tree_get_node() {
+  /* Setup */
+  tree_t t;
+  tree_setup(&t);
+
+  /* Root */
+  node_t *root = node_new();
+  node_setup_func(root, ADD, 2);
+  t.root = root;
+
+  /* Left */
+  node_t *sub = node_new();
+  node_t *k1 = node_new();
+  node_t *k2 = node_new();
+
+  node_setup_func(sub, SUB, 2);
+  node_setup_const(k1, 1.0);
+  node_setup_const(k2, 2.0);
+
+  root->children[0] = sub;
+  sub->children[0] = k1;
+  sub->children[1] = k2;
+
+  /* Right */
+  node_t *mul = node_new();
+  node_t *k3 = node_new();
+  node_t *k4 = node_new();
+  node_setup_func(mul, MUL, 2);
+  node_setup_const(k3, 3.0);
+  node_setup_const(k4, 4.0);
+
+  root->children[1] = mul;
+  mul->children[0] = k3;
+  mul->children[1] = k4;
+
+  /* Assert */
+  tree_print(&t);
+  {
+    node_t *n = tree_get_node(&t, 0);
+    MU_CHECK(n->type == FUNC_NODE);
+    MU_CHECK(n->function == ADD);
+    MU_CHECK(n->arity == 2);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 1);
+    MU_CHECK(n->type == FUNC_NODE);
+    MU_CHECK(n->function == SUB);
+    MU_CHECK(n->arity == 2);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 2);
+    MU_CHECK(n->type == TERM_NODE);
+    MU_CHECK(n->data_type == CONST);
+    MU_CHECK(fltcmp(n->value, 1.0) == 0);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 3);
+    MU_CHECK(n->type == TERM_NODE);
+    MU_CHECK(n->data_type == CONST);
+    MU_CHECK(fltcmp(n->value, 2.0) == 0);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 4);
+    MU_CHECK(n->type == FUNC_NODE);
+    MU_CHECK(n->function == MUL);
+    MU_CHECK(n->arity == 2);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 5);
+    MU_CHECK(n->type == TERM_NODE);
+    MU_CHECK(n->data_type == CONST);
+    MU_CHECK(fltcmp(n->value, 3.0) == 0);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 6);
+    MU_CHECK(n->type == TERM_NODE);
+    MU_CHECK(n->data_type == CONST);
+    MU_CHECK(fltcmp(n->value, 4.0) == 0);
+  }
+
+  {
+    node_t *n = tree_get_node(&t, 9);
+    MU_CHECK(n == NULL);
+  }
+
+  /* Clean up */
+  tree_clear(&t);
 
   return 0;
 }
@@ -244,36 +367,36 @@ int test_tree_select_rand_func() {
   /* Setup */
   tree_t t;
   tree_setup(&t);
-  t.root = &t.nodes[0];
 
   /* Root */
-  node_setup_func(&t.nodes[0], ADD, 2);
-  t.nodes[0].children[0] = &t.nodes[1];
-  t.nodes[0].children[1] = &t.nodes[4];
+  node_t *root = node_new();
+  node_setup_func(root, ADD, 2);
+  t.root = root;
 
-  /* Depth 1 - Left */
-  node_setup_func(&t.nodes[1], SUB, 2);
-  t.nodes[1].children[0] = &t.nodes[2];
-  t.nodes[1].children[1] = &t.nodes[3];
+  /* Left */
+  node_t *sub = node_new();
+  node_t *k1 = node_new();
+  node_t *k2 = node_new();
 
-  /* Depth 2 - Left */
-  node_setup_const(&t.nodes[2], 1.0);
-  node_setup_const(&t.nodes[3], 2.0);
+  node_setup_func(sub, SUB, 2);
+  node_setup_const(k1, 1.0);
+  node_setup_const(k2, 2.0);
 
-  /* Depth 1 - Right */
-  node_setup_func(&t.nodes[4], MUL, 2);
-  t.nodes[4].children[0] = &t.nodes[5];
-  t.nodes[4].children[1] = &t.nodes[6];
+  root->children[0] = sub;
+  sub->children[0] = k1;
+  sub->children[1] = k2;
 
-  /* Depth 2 - Right */
-  node_setup_const(&t.nodes[5], 3.0);
-  node_setup_func(&t.nodes[6], DIV, 2);
-  t.nodes[6].children[0] = &t.nodes[7];
-  t.nodes[6].children[1] = &t.nodes[8];
+  /* Right */
+  node_t *mul = node_new();
+  node_t *k3 = node_new();
+  node_t *k4 = node_new();
+  node_setup_func(mul, MUL, 2);
+  node_setup_const(k3, 3.0);
+  node_setup_const(k4, 4.0);
 
-  /* Depth 3 - Right */
-  node_setup_const(&t.nodes[7], 4.0);
-  node_setup_const(&t.nodes[8], 5.0);
+  root->children[1] = mul;
+  mul->children[0] = k3;
+  mul->children[1] = k4;
 
   /* Assert */
   tree_update(&t);
@@ -288,43 +411,52 @@ int test_subtree_size() {
   /* Setup */
   tree_t t;
   tree_setup(&t);
-  t.root = &t.nodes[0];
 
   /* Root */
-  node_setup_func(&t.nodes[0], ADD, 2);
-  t.nodes[0].children[0] = &t.nodes[1];
-  t.nodes[0].children[1] = &t.nodes[4];
+  node_t *root = node_new();
+  node_setup_func(root, ADD, 2);
+  t.root = root;
 
-  /* Depth 1 - Left */
-  node_setup_func(&t.nodes[1], SUB, 2);
-  t.nodes[1].children[0] = &t.nodes[2];
-  t.nodes[1].children[1] = &t.nodes[3];
+  /* Left */
+  node_t *sub = node_new();
+  node_t *k1 = node_new();
+  node_t *k2 = node_new();
 
-  /* Depth 2 - Left */
-  node_setup_const(&t.nodes[2], 1.0);
-  node_setup_const(&t.nodes[3], 2.0);
+  node_setup_func(sub, SUB, 2);
+  node_setup_const(k1, 1.0);
+  node_setup_const(k2, 2.0);
 
-  /* Depth 1 - Right */
-  node_setup_func(&t.nodes[4], MUL, 2);
-  t.nodes[4].children[0] = &t.nodes[5];
-  t.nodes[4].children[1] = &t.nodes[6];
+  root->children[0] = sub;
+  sub->children[0] = k1;
+  sub->children[1] = k2;
 
-  /* Depth 2 - Right */
-  node_setup_const(&t.nodes[5], 3.0);
-  node_setup_func(&t.nodes[6], DIV, 2);
-  t.nodes[6].children[0] = &t.nodes[7];
-  t.nodes[6].children[1] = &t.nodes[8];
+  /* Right */
+  node_t *mul = node_new();
+  node_t *k3 = node_new();
+  node_t *pow = node_new();
+  node_t *k4 = node_new();
+  node_t *k5 = node_new();
+  node_setup_func(mul, MUL, 2);
+  node_setup_const(k3, 3.0);
+  node_setup_func(pow, POW, 2);
+  node_setup_const(k4, 4.0);
+  node_setup_const(k5, 5.0);
 
-  /* Depth 3 - Right */
-  node_setup_const(&t.nodes[7], 4.0);
-  node_setup_const(&t.nodes[8], 5.0);
+  root->children[1] = mul;
+  mul->children[0] = k3;
+  mul->children[1] = pow;
+  pow->children[0] = k4;
+  pow->children[1] = k5;
 
   /* Assert */
   tree_update(&t);
   tree_print(&t);
-  MU_CHECK(subtree_size(&t.nodes[0]) == t.size);
-  MU_CHECK(subtree_size(&t.nodes[1]) == 3);
-  MU_CHECK(subtree_size(&t.nodes[4]) == 5);
+  MU_CHECK(subtree_size(root) == t.size);
+  MU_CHECK(subtree_size(sub) == 3);
+  MU_CHECK(subtree_size(mul) == 5);
+
+  /* Clean up */
+  tree_clear(&t);
 
   return 0;
 }
@@ -371,8 +503,11 @@ int test_point_mutation() {
 
   point_mutation(&fs, &ts, &t);
 
-  printf("AFTER\n");
+  printf("\nAFTER\n");
   tree_print(&t);
+
+  /* Clean up */
+  tree_clear(&t);
 
   return 0;
 }
@@ -413,10 +548,20 @@ int test_point_crossover() {
   /* Generate tree */
   tree_t t1;
   tree_t t2;
-  tree_generate(FULL, &fs, &ts, 3, &t1);
-  tree_generate(FULL, &fs, &ts, 3, &t2);
+  tree_generate(FULL, &fs, &ts, 2, &t1);
+  tree_generate(FULL, &fs, &ts, 2, &t2);
   printf("tree1:\n"); tree_print(&t1); printf("\n");
   printf("tree2:\n"); tree_print(&t2);
+
+  printf("\n");
+  point_crossover(&t1, &t2);
+
+  printf("tree1:\n"); tree_print(&t1); printf("\n");
+  printf("tree2:\n"); tree_print(&t2);
+
+  /* clean up */
+  tree_clear(&t1);
+  tree_clear(&t2);
 
   return 0;
 }
@@ -429,6 +574,8 @@ void test_suite() {
   MU_ADD_TEST(test_node_clear);
   MU_ADD_TEST(test_node_setup_func);
   MU_ADD_TEST(test_node_setup_input);
+  MU_ADD_TEST(test_node_setup_const);
+  MU_ADD_TEST(test_node_new_and_delete);
   MU_ADD_TEST(test_random_func);
   MU_ADD_TEST(test_random_term);
 
@@ -437,6 +584,7 @@ void test_suite() {
   MU_ADD_TEST(test_tree_clear);
   MU_ADD_TEST(test_tree_generate);
   MU_ADD_TEST(test_tree_update);
+  MU_ADD_TEST(test_tree_get_node);
   MU_ADD_TEST(test_tree_select_rand_func);
   MU_ADD_TEST(test_subtree_size);
 
