@@ -363,12 +363,12 @@ void tree_print(const tree_t *t) {
 #define RAMPED_HALF_AND_HALF 2
 
 static void tree_build(const int method,
-                         tree_t *t,
-                         node_t *n,
-                         const function_set_t *fs,
-                         const terminal_set_t *ts,
-                         const int curr_depth,
-                         const int max_depth) {
+                       tree_t *t,
+                       node_t *n,
+                       const function_set_t *fs,
+                       const terminal_set_t *ts,
+                       const int curr_depth,
+                       const int max_depth) {
   assert(t != NULL);
   assert(n != NULL);
   assert(fs != NULL);
@@ -537,7 +537,7 @@ int subtree_size(const node_t *root) {
 }
 
 /******************************************************************************
- *                             MUTATION OPERATORS
+ *                           MUTATION OPERATORS
  ******************************************************************************/
 
 static void mutate_term_node(const terminal_set_t *ts, node_t *n) {
@@ -578,7 +578,7 @@ void point_mutation(const function_set_t *fs,
 }
 
 /******************************************************************************
- *                             CROSSOVER OPERATORS
+ *                           CROSSOVER OPERATORS
  ******************************************************************************/
 
 void point_crossover(tree_t *t1, tree_t *t2) {
@@ -598,5 +598,280 @@ void point_crossover(tree_t *t1, tree_t *t2) {
   t1_subtree->parent = t2_parent;
   t2_subtree->parent = t1_parent;
 }
+
+/******************************************************************************
+ *                              REGRESSION
+ ******************************************************************************/
+
+int regression_traverse(int index,
+												int end,
+												struct node **chromosome,
+												struct stack *stack,
+												float **func_input,
+												struct data *d,
+												int resp_col) {
+	int i;
+	float *result = NULL;
+	struct node *eval_node;
+	struct node *n = chromosome[index];
+	struct node *in1 = NULL;
+	struct node *in2 = NULL;
+	int in1_type = -1;
+	int in2_type = -1;
+
+	errno = 0;
+	if (n->type == TERM_NODE) {
+		stack_push(stack, n);
+
+	} else if (n->type == FUNC_NODE) {
+		/* prep function input data */
+		if (n->arity == 2) {
+			in2 = stack_pop(stack);
+			in1 = stack_pop(stack);
+			in1_type = in1->terminal_type;
+			in2_type = in2->terminal_type;
+			assert(regression_func_input(in1, d, func_input, 0) == 0);
+			assert(regression_func_input(in2, d, func_input, 1) == 0);
+
+
+		} else {
+			in1 = stack_pop(stack);
+			in1_type = in1->terminal_type;
+			silent_check(regression_func_input(in1, d, func_input, 0) == 0);
+
+		}
+
+		/* evaluate function */
+		result = malloc(sizeof(float) * (size_t) d->rows);
+		switch (n->function) {
+			case ADD:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = func_input[0][i] + func_input[1][i];
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case SUB:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = func_input[0][i] - func_input[1][i];
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case MUL:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = func_input[0][i] * func_input[1][i];
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case DIV:
+				for (i = 0; i < d->rows; i++) {
+					/* check for zero */
+					silent_check(fltcmp(func_input[1][i], 0.0) != 0);
+					result[i] = func_input[0][i] / func_input[1][i];
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case POW:
+				for (i = 0; i < d->rows; i++) {
+					func_input[0][i] = fabsf(func_input[0][i]);
+					result[i] = powf(func_input[0][i], func_input[1][i]);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case LOG:
+				for (i = 0; i < d->rows; i++) {
+					/* check for zero and negative */
+					silent_check(func_input[0][i] > 0.0);
+					result[i] = logf(func_input[0][i]);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case EXP:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = expf(func_input[0][i]);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case RAD:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = func_input[0][i] * (float) (PI / 180.0);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case SIN:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = sinf(func_input[0][i]);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			case COS:
+				for (i = 0; i < d->rows; i++) {
+					result[i] = cosf(func_input[0][i]);
+					silent_check(regression_check() == 0);
+				}
+				break;
+
+			default:
+				/* UNRECOGNIZED FUNCTION */
+				log_err("unrecogized function! %d", n->function);
+				goto func_error;
+		}
+
+		/* Create evaluation node */
+		eval_node = node_new_eval(FLOAT, result, d->rows);
+		if (resp_col != -1) {
+			for (i = 0; i < d->rows; i++) {
+				eval_node->error += fabs(result[i] - d->data[resp_col][i]);
+			}
+		}
+		n->error = eval_node->error;
+
+		/* finish up */
+		stack_push(stack, eval_node);
+		regression_free_inputs(in1_type, in1, in2_type, in2);
+	}
+
+	/* terminate check */
+	if (index == end) {
+		return 0;
+	} else {
+		return regression_traverse(
+				index + 1,
+				end,
+				chromosome,
+				stack,
+				func_input,
+				d,
+				resp_col
+				);
+	}
+
+error:
+	regression_free_inputs(in1_type, in1, in2_type, in2);
+	free(result);
+	return -1;
+
+func_error:
+	regression_free_inputs(in1_type, in1, in2_type, in2);
+	free(result);
+	return -2;
+}
+
+/* void regression_clear_stack(struct stack *s) */
+/* { */
+/*     int i; */
+/*     struct node *n; */
+/*  */
+/*     for (i = 0; s->size; i++) { */
+/*         n = stack_pop(s); */
+/*         if (n->terminal_type == EVAL) { */
+/*             node_destroy(n); */
+/*         } */
+/*     } */
+/*     free(s); */
+/* } */
+
+/* int regression_evaluate_tree(struct tree *t, struct data *d, const char *resp) */
+/* { */
+/*     int i; */
+/*     int col; */
+/*     int res; */
+/*     int hits; */
+/*     float value; */
+/*     float err; */
+/*     float sse; */
+/*     float **func_input; */
+/*     struct stack *s; */
+/*     struct node *result; */
+/*  */
+/*     #<{(| setup |)}># */
+/*     hits = 0; */
+/*     col = data_field_index(d, resp); */
+/*     value = 0.0f; */
+/*     err = 0.0; */
+/*     sse = 0.0; */
+/*     s = stack_new(); */
+/*  */
+/*     #<{(| pre-check |)}># */
+/*     check(col >= 0, "col is not found!"); */
+/*  */
+/*     #<{(| initialize func_input |)}># */
+/*     func_input = malloc(sizeof(float *) * 2); */
+/*     for (i = 0; i < 2; i++) { */
+/*         func_input[i] = malloc(sizeof(float) * (size_t) d->rows); */
+/*     } */
+/*  */
+/*     #<{(| evaluate chromosome |)}># */
+/*     res = regression_traverse( */
+/*         0, */
+/*         t->size - 1, */
+/*         t->chromosome, */
+/*         s, */
+/*         func_input, */
+/*         d, */
+/*         col */
+/*     ); */
+/*     #<{(| check(res != -1, "Failed to evaluate tree %s", regression_string(t)); |)}># */
+/*     silent_check(res != -1); */
+/*  */
+/*     #<{(| check results |)}># */
+/*     result = stack_pop(s); */
+/*     for (i = 0; i < d->rows; i++) { */
+/*         value = ((float *) result->values)[i]; */
+/*         err = (float) fabs(value - d->data[col][i]); */
+/*         err = (float) pow(err, 2); */
+/*         sse += err; */
+/*  */
+/*         if (fltcmp(err, 0.0f) == 0) { */
+/*             hits++; */
+/*         } */
+/*     } */
+/*  */
+/*     #<{(| record evaluation |)}># */
+/*     t->error = sse; */
+/*     if (t->score == NULL) { */
+/*         t->score = malloc_float(sse + (t->size * 0.1)); */
+/*         #<{(| t->score = malloc_float(sse); |)}># */
+/*     } else { */
+/*         *t->score = (float) (sse + (t->size * 0.1)); */
+/*         #<{(| *t->score = (float) sse; |)}># */
+/*     } */
+/*     #<{(| if (isnan(sse) || isinf(sse) || sse > 10000) { |)}># */
+/*     #<{(|     if (t->score != NULL) { |)}># */
+/*     #<{(|         free(t->score); |)}># */
+/*     #<{(|         t->score = NULL; |)}># */
+/*     #<{(|     } |)}># */
+/*     #<{(| } |)}># */
+/*     t->hits = hits; */
+/*  */
+/*     #<{(| clean up |)}># */
+/*     node_destroy(result); */
+/*     regression_clear_stack(s); */
+/*     free(func_input[0]); */
+/*     free(func_input[1]); */
+/*     free(func_input); */
+/*     return 0; */
+/*  */
+/* error: */
+/*     if (t->score) { */
+/*         free(t->score); */
+/*         t->score = NULL; */
+/*     } */
+/*     regression_clear_stack(s); */
+/*     free(func_input[0]); */
+/*     free(func_input[1]); */
+/*     free(func_input); */
+/*     return -1; */
+/* } */
+/*  */
+
 
 #endif
