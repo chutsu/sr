@@ -1,13 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-</head>
-
-<body>
-
-<script>
-
 /**
  * Returns a random integer between min (inclusive) and max (inclusive).
  * The value is no lower than min (or the next integer greater than min
@@ -62,8 +52,8 @@ const ts = [
 	{"type": CONST, "value": 8.0},
 	{"type": CONST, "value": 9.0},
 	{"type": CONST, "value": 10.0},
-	{"type": INPUT, "value": "x"},
-	{"type": INPUT, "value": "y"}
+	// {"type": INPUT, "value": "x"},
+	// {"type": INPUT, "value": "y"}
 ];
 
 /******************************************************************************
@@ -369,17 +359,60 @@ function point_mutation(fs, ts, tree) {
 }
 
 /******************************************************************************
+ *                                REGRESSION
+ ******************************************************************************/
+
+function eval_tree(tree) {
+  var eq_stack = tree_stack(tree);
+  var eval_stack = [];
+
+  while (eq_stack.length != 0) {
+    var node = eq_stack.pop();
+
+    if (node.type == FUNC_NODE) {
+      var args = [];
+      for (var i = 0; i < node.arity; i++) {
+        args.push(eval_stack.pop());
+      }
+
+      var result = 0.0;
+      switch (node.func) {
+      case ADD: result = args[0].data + args[1].data; break;
+      case SUB: result = args[0].data - args[1].data; break;
+      case MUL: result = args[0].data * args[1].data; break;
+      case DIV: result = args[0].data / args[1].data; break;
+      case POW: result = Math.pow(args[0].data, args[1].data); break;
+      case EXP: result = Math.exp(args[0].data); break;
+      case LOG: result = Math.log(args[0].data); break;
+      }
+      eval_stack.push(node_setup_const(result));
+
+    } else {
+      eval_stack.push(node);
+    }
+  }
+  console.log(eval_stack.pop());
+}
+
+/******************************************************************************
  *                                   TEST
  ******************************************************************************/
 
-<!-- tree = tree_generate(FULL, fs, ts, 2); -->
-<!-- <!&#45;&#45; tree_print(tree); &#45;&#45;> -->
-<!-- tree_print_equation(tree); -->
-<!--  -->
-<!-- point_mutation(fs, ts, tree); -->
-<!-- <!&#45;&#45; tree_print(tree); &#45;&#45;> -->
-<!-- tree_print_equation(tree); -->
+function test_point_mutation() {
+  for (var i = 0; i < 100; i++) {
+    tree = tree_generate(FULL, fs, ts, 2);
+    tree_print_equation(tree);
 
-</script>
-</body>
-</html>
+    point_mutation(fs, ts, tree);
+    tree_print_equation(tree);
+  }
+}
+
+function test_eval_tree() {
+  tree = tree_generate(FULL, fs, ts, 2);
+  tree_print_equation(tree);
+  eval_tree(tree);
+}
+
+// test_point_mutation();
+test_eval_tree();

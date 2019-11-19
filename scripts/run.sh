@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-make
+# make
 # ./build/tests/test_sr --target test_node_setup
 # ./build/tests/test_sr --target test_node_clear
 # ./build/tests/test_sr --target test_node_setup_func
@@ -17,4 +17,6 @@ make
 # ./build/tests/test_sr --target test_tree_select_rand_func
 # ./build/tests/test_sr --target test_subtree_size
 # ./build/tests/test_sr --target test_point_mutation
-./build/tests/test_sr --target test_point_crossover
+# ./build/tests/test_sr --target test_point_crossover
+
+cd sr && node sr.js
