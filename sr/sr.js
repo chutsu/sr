@@ -24,13 +24,13 @@ const EXP = "EXP";
 const LOG = "LOG";
 
 const fs = [
-	{"type": ADD, "arity": 2},
-	{"type": SUB, "arity": 2},
-	{"type": MUL, "arity": 2},
-	{"type": DIV, "arity": 2},
-	{"type": POW, "arity": 2},
-	{"type": EXP, "arity": 1},
-	{"type": LOG, "arity": 1}
+  {"type": ADD, "arity": 2},
+  {"type": SUB, "arity": 2},
+  {"type": MUL, "arity": 2},
+  {"type": DIV, "arity": 2},
+  {"type": POW, "arity": 2},
+  {"type": EXP, "arity": 1},
+  {"type": LOG, "arity": 1}
 ];
 
 /******************************************************************************
@@ -39,21 +39,22 @@ const fs = [
 
 const CONST = 0;
 const INPUT = 1;
+const EVAL = 2;
 
 const ts = [
-	{"type": CONST, "value": 0.0},
-	{"type": CONST, "value": 1.0},
-	{"type": CONST, "value": 2.0},
-	{"type": CONST, "value": 3.0},
-	{"type": CONST, "value": 4.0},
-	{"type": CONST, "value": 5.0},
-	{"type": CONST, "value": 6.0},
-	{"type": CONST, "value": 7.0},
-	{"type": CONST, "value": 8.0},
-	{"type": CONST, "value": 9.0},
-	{"type": CONST, "value": 10.0},
-	// {"type": INPUT, "value": "x"},
-	// {"type": INPUT, "value": "y"}
+  {"type": CONST, "value": 0.0},
+  {"type": CONST, "value": 1.0},
+  {"type": CONST, "value": 2.0},
+  {"type": CONST, "value": 3.0},
+  {"type": CONST, "value": 4.0},
+  {"type": CONST, "value": 5.0},
+  {"type": CONST, "value": 6.0},
+  {"type": CONST, "value": 7.0},
+  {"type": CONST, "value": 8.0},
+  {"type": CONST, "value": 9.0},
+  {"type": CONST, "value": 10.0},
+  {"type": INPUT, "value": "x"},
+  {"type": INPUT, "value": "y"}
 ];
 
 /******************************************************************************
@@ -84,38 +85,38 @@ function node_new(){
 }
 
 function node_str(node) {
-	var line = "";
+  var line = "";
 
-	switch (node.type) {
-	case FUNC_NODE:
-		switch (node.func) {
-		case ADD: line += "func: ADD\t"; break;
-		case SUB: line += "func: SUB\t"; break;
-		case MUL: line += "func: MUL\t"; break;
-		case DIV: line += "func: DIV\t"; break;
-		case POW: line += "func: POW\t"; break;
-		case EXP: line += "func: EXP\t"; break;
-		case LOG: line += "func: LOG\t"; break;
-		default:
-			line += "Opps! Invalid function type[" + node.func + "]!";
-			break;
-		}
-		line += "arity: " + node.arity;
-		break;
-	case TERM_NODE:
-		line += "data: " + node.data;
-		break;
-	default:
-		line += "Opps! Invalid node type [" + node.type + "]!";
-		break;
+  switch (node.type) {
+  case FUNC_NODE:
+    switch (node.func) {
+    case ADD: line += "func: ADD\t"; break;
+    case SUB: line += "func: SUB\t"; break;
+    case MUL: line += "func: MUL\t"; break;
+    case DIV: line += "func: DIV\t"; break;
+    case POW: line += "func: POW\t"; break;
+    case EXP: line += "func: EXP\t"; break;
+    case LOG: line += "func: LOG\t"; break;
+    default:
+      line += "Opps! Invalid function type[" + node.func + "]!";
+      break;
+    }
+    line += "arity: " + node.arity;
+    break;
+  case TERM_NODE:
+    line += "data: " + node.data;
+    break;
+  default:
+    line += "Opps! Invalid node type [" + node.type + "]!";
+    break;
   }
 
-	return line;
+  return line;
 }
 
 function node_print(node) {
-	var str = node_str(node);
-	console.log(str);
+  var str = node_str(node);
+  console.log(str);
 }
 
 function node_setup_func(func, arity) {
@@ -123,7 +124,7 @@ function node_setup_func(func, arity) {
   n.type = FUNC_NODE;
   n.func = func;
   n.arity = arity;
-	return n;
+  return n;
 }
 
 function node_setup_input(input_name) {
@@ -131,7 +132,7 @@ function node_setup_input(input_name) {
   n.type = TERM_NODE;
   n.data_type = INPUT;
   n.data = input_name;
-	return n;
+  return n;
 }
 
 function node_setup_const(value) {
@@ -139,18 +140,26 @@ function node_setup_const(value) {
   n.type = TERM_NODE;
   n.data_type = CONST;
   n.data = value;
-	return n;
+  return n;
+}
+
+function node_setup_eval(value) {
+  n = node_new();
+  n.type = TERM_NODE;
+  n.data_type = EVAL;
+  n.data = value;
+  return n;
 }
 
 function random_func(fs) {
   var idx = randi(0, fs.length - 1);
-	var func = fs[idx];
+  var func = fs[idx];
   return node_setup_func(func.type, func.arity);
 }
 
 function random_term(ts) {
   var idx = randi(0, ts.length - 1);
-	var term = ts[idx];
+  var term = ts[idx];
 
   switch (term.type) {
   case INPUT: return node_setup_input(term.value);
@@ -163,7 +172,7 @@ function random_term(ts) {
  ******************************************************************************/
 
 function tree_new() {
-	return {
+  return {
     "root": null,
     "size": 0,
     "depth": 0,
@@ -176,7 +185,7 @@ function tree_new() {
 
 function tree_print_traverse(str, node) {
   if (node.type == TERM_NODE) {
-		str += "  " + node_str(node) + "\n";
+    str += "  " + node_str(node) + "\n";
     return str;
   }
 
@@ -185,11 +194,11 @@ function tree_print_traverse(str, node) {
     str = tree_print_traverse(str, node.children[i]);
   }
 
-	return str;
+  return str;
 }
 
 function tree_print(tree) {
-	var props_str = "";
+  var props_str = "";
   props_str += "tree.depth: " + t.depth + "\n";
   props_str += "tree.size: " + t.size + "\n";
   props_str += "tree.error: " + t.error + "\n";
@@ -197,9 +206,9 @@ function tree_print(tree) {
   props_str += "tree.hits: " + t.hits + "\n";
   props_str += "tree.nodes:\n";
 
-	var nodes_str = "";
+  var nodes_str = "";
   var nodes_str = tree_print_traverse(nodes_str, t.root);
-	console.log(props_str + nodes_str);
+  console.log(props_str + nodes_str);
 }
 
 const FULL = 0;
@@ -271,11 +280,11 @@ function tree_generate(method, fs, ts, max_depth) {
 
 function tree_traverse(stack, node) {
   if (node.type == TERM_NODE) {
-		stack.push(node);
+    stack.push(node);
     return stack;
   }
 
-	stack.push(node);
+  stack.push(node);
   for (var i = 0; i < node.arity; i++) {
     stack = tree_traverse(stack, node.children[i]);
   }
@@ -284,37 +293,37 @@ function tree_traverse(stack, node) {
 }
 
 function tree_stack(tree) {
-	var stack = [];
+  var stack = [];
   return tree_traverse(stack, tree.root);
 }
 
 function tree_get_node(tree, idx) {
-	var stack = tree_stack(tree);
-	return stack[idx];
+  var stack = tree_stack(tree);
+  return stack[idx];
 }
 
 function tree_equation_str_traverse(str, node) {
-	if (node.type == TERM_NODE) {
-		str += node.data + " ";
-		return str;
-	}
+  if (node.type == TERM_NODE) {
+    str += node.data + " ";
+    return str;
+  }
 
-	str += node.func + " ";
-	for (var i = 0; i < node.arity; i++) {
-		str = tree_equation_str_traverse(str, node.children[i]);
-	}
+  str += node.func + " ";
+  for (var i = 0; i < node.arity; i++) {
+    str = tree_equation_str_traverse(str, node.children[i]);
+  }
 
-	return str;
+  return str;
 }
 
 function tree_equation_str(tree) {
-	var str = "";
-	str = tree_equation_str_traverse(str, tree.root);
-	return str;
+  var str = "";
+  str = tree_equation_str_traverse(str, tree.root);
+  return str;
 }
 
 function tree_print_equation(tree) {
-	console.log(tree_equation_str(tree));
+  console.log(tree_equation_str(tree));
 }
 
 /******************************************************************************
@@ -322,29 +331,29 @@ function tree_print_equation(tree) {
  ******************************************************************************/
 
 function mutate_term_node(ts, node) {
-	for (var attempts = 0; attempts < 1000; attempts++) {
-		new_node = random_term(ts);
-		if (new_node.data !== node.data) {
-			node.data = new_node.data;
-			return node;
-		}
-	}
+  for (var attempts = 0; attempts < 1000; attempts++) {
+    new_node = random_term(ts);
+    if (new_node.data !== node.data) {
+      node.data = new_node.data;
+      return node;
+    }
+  }
 
-	return null;
+  return null;
 }
 
 function mutate_func_node(fs, node) {
-	for (var attempts = 0; attempts < 1000; attempts++) {
+  for (var attempts = 0; attempts < 1000; attempts++) {
     var idx = randi(0, fs.length - 1);
-		var func = fs[idx];
+    var func = fs[idx];
     if (func.type !== node.func && func.arity == node.arity) {
-			node.func = func.type;
-			return node;
+      node.func = func.type;
+      return node;
     }
-	}
-	console.log("Failed to get a function with an arity of %d!", node.arity);
+  }
+  console.log("Failed to get a function with an arity of %d!", node.arity);
 
-	return null;
+  return null;
 }
 
 function point_mutation(fs, ts, tree) {
@@ -362,7 +371,15 @@ function point_mutation(fs, ts, tree) {
  *                                REGRESSION
  ******************************************************************************/
 
-function eval_tree(tree) {
+function eval_resolve_node(node, inputs) {
+  switch (node.data_type) {
+  case CONST: return node.data;
+  case EVAL: return inputs[node.data];
+  default: return null;
+  }
+}
+
+function eval_tree(tree, inputs) {
   var eq_stack = tree_stack(tree);
   var eval_stack = [];
 
@@ -377,13 +394,39 @@ function eval_tree(tree) {
 
       var result = 0.0;
       switch (node.func) {
-      case ADD: result = args[0].data + args[1].data; break;
-      case SUB: result = args[0].data - args[1].data; break;
-      case MUL: result = args[0].data * args[1].data; break;
-      case DIV: result = args[0].data / args[1].data; break;
-      case POW: result = Math.pow(args[0].data, args[1].data); break;
-      case EXP: result = Math.exp(args[0].data); break;
-      case LOG: result = Math.log(args[0].data); break;
+      case ADD:
+        arg0 = eval_resolve_node(args[1], inputs);
+        arg1 = eval_resolve_node(args[0], inputs);
+        result = arg0 + arg1;
+        break;
+      case SUB:
+        arg0 = eval_resolve_node(args[1], inputs);
+        arg1 = eval_resolve_node(args[0], inputs);
+        result = arg0 - arg1;
+        break;
+      case MUL:
+        arg0 = eval_resolve_node(args[1], inputs);
+        arg1 = eval_resolve_node(args[0], inputs);
+        result = arg0 * arg1;
+        break;
+      case DIV:
+        arg0 = eval_resolve_node(args[1], inputs);
+        arg1 = eval_resolve_node(args[0], inputs);
+        result = arg0 / arg1;
+        break;
+      case POW:
+        arg0 = eval_resolve_node(args[1], inputs);
+        arg1 = eval_resolve_node(args[0], inputs);
+        result = Math.pow(arg0, arg1);
+        break;
+      case EXP:
+        arg0 = eval_resolve_node(args[0], inputs);
+        result = Math.exp(arg0);
+        break;
+      case LOG:
+        arg0 = eval_resolve_node(args[0], inputs);
+        result = Math.log(arg0);
+        break;
       }
       eval_stack.push(node_setup_const(result));
 
@@ -391,7 +434,7 @@ function eval_tree(tree) {
       eval_stack.push(node);
     }
   }
-  console.log(eval_stack.pop());
+  // console.log(eval_stack.pop());
 }
 
 /******************************************************************************
@@ -409,9 +452,28 @@ function test_point_mutation() {
 }
 
 function test_eval_tree() {
-  tree = tree_generate(FULL, fs, ts, 2);
-  tree_print_equation(tree);
-  eval_tree(tree);
+  console.time("eval_tree");
+
+  var workers = [];
+  for (var j = 0; j < 1000; j++) {
+    for (var i = 0; i < 1000; i++) {
+      tree = tree_generate(FULL, fs, ts, 5);
+      inputs = {"x": 1.0, "y": 2.0};
+      // eval_tree(tree, inputs);
+      // tree_print_equation(tree);
+
+      console.log(i);
+      workers.push(new Worker("sr_worker.js"));
+    }
+  }
+
+  for (var i = 0; workers.length; i++) {
+    w.onmessage = function(event) {
+      console.log(event.data);
+    };
+  }
+
+  console.timeEnd("eval_tree");
 }
 
 // test_point_mutation();
