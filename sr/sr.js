@@ -54,7 +54,7 @@ const ts = [
   {"type": CONST, "value": 9.0},
   {"type": CONST, "value": 10.0},
   {"type": INPUT, "value": "x"},
-  {"type": INPUT, "value": "y"}
+  // {"type": INPUT, "value": "y"}
 ];
 
 /******************************************************************************
@@ -388,15 +388,24 @@ function point_crossover(t1, t2) {
  *                                REGRESSION
  ******************************************************************************/
 
-function eval_resolve_node(node, inputs) {
+function eval_resolve_node(node, dataset) {
   switch (node.data_type) {
-  case CONST: return node.data;
-  case EVAL: return inputs[node.data];
-  default: return null;
+  case CONST:
+    var data = [];
+    for (var i = 0; i < dataset.size; i++) {
+      data.push(node.data);
+    }
+    return data;
+  case INPUT:
+    return dataset["inputs"][node.data];
+  case EVAL:
+    return node.data;
+  default:
+    return null;
   }
 }
 
-function eval_tree(tree, inputs) {
+function eval_tree(tree, dataset) {
   var eq_stack = tree_stack(tree);
   var eval_stack = [];
 
@@ -409,49 +418,66 @@ function eval_tree(tree, inputs) {
         args.push(eval_stack.pop());
       }
 
-      var result = 0.0;
+      var result = [];
+      var arg0 = [];
+      var arg1 = [];
       switch (node.func) {
       case ADD:
-        arg0 = eval_resolve_node(args[1], inputs);
-        arg1 = eval_resolve_node(args[0], inputs);
-        result = arg0 + arg1;
+        arg0 = eval_resolve_node(args[1], dataset);
+        arg1 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(arg0[i] + arg1[i]);
+        }
         break;
       case SUB:
-        arg0 = eval_resolve_node(args[1], inputs);
-        arg1 = eval_resolve_node(args[0], inputs);
-        result = arg0 - arg1;
+        arg0 = eval_resolve_node(args[1], dataset);
+        arg1 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(arg0[i] - arg1[i]);
+        }
         break;
       case MUL:
-        arg0 = eval_resolve_node(args[1], inputs);
-        arg1 = eval_resolve_node(args[0], inputs);
-        result = arg0 * arg1;
+        arg0 = eval_resolve_node(args[1], dataset);
+        arg1 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(arg0[i] * arg1[i]);
+        }
         break;
       case DIV:
-        arg0 = eval_resolve_node(args[1], inputs);
-        arg1 = eval_resolve_node(args[0], inputs);
-        result = arg0 / arg1;
+        arg0 = eval_resolve_node(args[1], dataset);
+        arg1 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(arg0[i] / arg1[i]);
+        }
         break;
       case POW:
-        arg0 = eval_resolve_node(args[1], inputs);
-        arg1 = eval_resolve_node(args[0], inputs);
-        result = Math.pow(arg0, arg1);
+        arg0 = eval_resolve_node(args[1], dataset);
+        arg1 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(Math.pow(arg0[i], arg1[i]));
+        }
         break;
       case EXP:
-        arg0 = eval_resolve_node(args[0], inputs);
-        result = Math.exp(arg0);
+        arg0 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(Math.exp(arg0[i]));
+        }
         break;
       case LOG:
-        arg0 = eval_resolve_node(args[0], inputs);
-        result = Math.log(arg0);
+        arg0 = eval_resolve_node(args[0], dataset);
+        for (var i = 0; i < dataset.size; i++) {
+          result.push(Math.log(arg0[i]));
+        }
         break;
       }
-      eval_stack.push(node_setup_const(result));
+      eval_stack.push(node_setup_eval(result));
 
     } else {
       eval_stack.push(node);
     }
   }
-  // console.log(eval_stack.pop());
+
+  return eval_stack.pop().data;
 }
 
 /******************************************************************************
@@ -481,29 +507,32 @@ function test_point_crossover() {
 
 function test_eval_tree() {
   console.time("eval_tree");
+  data = {
+    "inputs": {
+      "x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    },
+    "response": {
+      "y": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+    },
+    "size": 10
+  };
 
-  var workers = [];
-  for (var j = 0; j < 100; j++) {
-    for (var i = 0; i < 1000; i++) {
-      tree = tree_generate(FULL, fs, ts, 5);
-      inputs = {"x": 1.0, "y": 2.0};
-      eval_tree(tree, inputs);
-      tree_print_equation(tree);
+  tree = tree_generate(FULL, fs, ts, 2);
+  result = eval_tree(tree, data);
+  tree_print_equation(tree);
+  console.log(result);
 
-      // console.log(i);
-      // workers.push(new Worker("sr_worker.js"));
-    }
-  }
-
-  for (var i = 0; workers.length; i++) {
-    w.onmessage = function(event) {
-      console.log(event.data);
-    };
-  }
+  // var workers = [];
+  // workers.push(new Worker("sr_worker.js"));
+  // for (var i = 0; workers.length; i++) {
+  //   w.onmessage = function(event) {
+  //     console.log(event.data);
+  //   };
+  // }
 
   console.timeEnd("eval_tree");
 }
 
 // test_point_mutation();
 // test_point_crossover();
-// test_eval_tree();
+test_eval_tree();
