@@ -368,6 +368,23 @@ function point_mutation(fs, ts, tree) {
 }
 
 /******************************************************************************
+ *                                CROSSOVER
+ ******************************************************************************/
+
+function point_crossover(t1, t2) {
+  var idx = randi(1, t1.size - 1);
+  t1_node = tree_get_node(t1, idx);
+
+  var idx = randi(1, t2.size - 1);
+  t2_node = tree_get_node(t2, idx);
+
+  var t1_nth_child = t1_node.nth_child;
+  var t2_nth_child = t2_node.nth_child;
+  t1_node.parent.children[t1_nth_child] = t2_node;
+  t2_node.parent.children[t2_nth_child] = t1_node;
+}
+
+/******************************************************************************
  *                                REGRESSION
  ******************************************************************************/
 
@@ -451,19 +468,30 @@ function test_point_mutation() {
   }
 }
 
+function test_point_crossover() {
+  t1 = tree_generate(FULL, fs, ts, 2);
+  t2 = tree_generate(FULL, fs, ts, 2);
+  tree_print_equation(t1);
+  tree_print_equation(t2);
+
+  point_crossover(t1, t2);
+  tree_print_equation(t1);
+  tree_print_equation(t2);
+}
+
 function test_eval_tree() {
   console.time("eval_tree");
 
   var workers = [];
-  for (var j = 0; j < 1000; j++) {
+  for (var j = 0; j < 100; j++) {
     for (var i = 0; i < 1000; i++) {
       tree = tree_generate(FULL, fs, ts, 5);
       inputs = {"x": 1.0, "y": 2.0};
-      // eval_tree(tree, inputs);
-      // tree_print_equation(tree);
+      eval_tree(tree, inputs);
+      tree_print_equation(tree);
 
-      console.log(i);
-      workers.push(new Worker("sr_worker.js"));
+      // console.log(i);
+      // workers.push(new Worker("sr_worker.js"));
     }
   }
 
@@ -477,4 +505,5 @@ function test_eval_tree() {
 }
 
 // test_point_mutation();
-test_eval_tree();
+// test_point_crossover();
+// test_eval_tree();
