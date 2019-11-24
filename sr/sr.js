@@ -11,6 +11,10 @@ function randi(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function randf(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
 /******************************************************************************
  *                              FUNCTION SET
  ******************************************************************************/
@@ -179,7 +183,6 @@ function tree_new() {
 
     "error": 0.0,
     "score": 0.0,
-    "hits": 0
   }
 }
 
@@ -477,11 +480,156 @@ function eval_tree(tree, dataset) {
     }
   }
 
-  return eval_stack.pop().data;
+  // Calculate RMSE
+  var predicted = eval_stack.pop().data;
+  var response = dataset.response;
+  var err_sq = 0.0;
+  for (var i = 0; i < predicted.length; i++) {
+    err_sq += Math.pow(predicted[i] - response[i], 2);
+  }
+  var rmse = Math.sqrt(err_sq / predicted.length);
+
+  // Set error and score
+  tree.error = rmse;
+  tree.score = rmse;
 }
 
 /******************************************************************************
- *                                   TEST
+ *                           GENETIC PROGRAMMING
+ ******************************************************************************/
+
+function population_new(dataset, fs, ts, max_depth, pop_size) {
+  console.assert(dataset != null, {dataset});
+  console.assert(fs != null, {fs});
+  console.assert(ts != null, {ts});
+  console.assert(max_depth > 1, {max_depth});
+  console.assert(pop_size >= 10, {pop_size});
+
+  var pop = {
+    "trees": [],
+
+    "dataset": dataset,
+    "fs": fs,
+    "ts": ts,
+
+    "pop_size": 10,
+    "t_size": 5,
+  };
+
+  for (var i = 0; i < pop_size; i++) {
+    var tree = tree_generate(FULL, fs, ts, max_depth);
+    pop.trees.push(tree);
+  }
+
+  return pop;
+}
+
+function population_print(pop) {
+  for (var i = 0; i < pop.trees.length; i++) {
+    var score = pop.trees[i].score.toFixed(4);
+    var eq = tree_equation_str(pop.trees[i]);
+    console.log("eq: %s [score: %s]", eq, score.toString(10).padStart(4));
+  }
+}
+
+function population_eval(pop, dataset) {
+  console.assert(pop != null, {pop});
+  console.assert(dataset != null, {dataset});
+
+  for (var i = 0; i < pop.trees.length; i++) {
+    eval_tree(pop.trees[i], dataset);
+  }
+}
+
+function population_best(pop) {
+  var best_tree = pop.trees[0];
+
+  for (var i = 1; i < pop.trees.length; i++) {
+    if (pop.trees[i].score < best_tree.score) {
+      best_tree = pop.trees[i];
+    }
+  }
+
+  return best_tree;
+}
+
+
+function tournament_selection(pop, t_size) {
+  console.assert(t_size > 1, {t_size});
+
+  var new_pop = [];
+
+  for (var j = 0; j < pop.trees.length; j++) {
+    // Create tournament
+    var tournament = [];
+    for (var i = 0; i < t_size; i++) {
+      var idx = randi(0, pop.trees.length);
+      tournament.push(pop.trees[idx]);
+    }
+
+    // Select best from tournament
+    var best_tree = tournament[0];
+    for (var i = 1; i < t_size; i++) {
+      console.log(tournament[i]);
+      console.log(best_tree);
+      if (tournament[i].score < best_tree.score) {
+        best_tree = tournament[i];
+      }
+    }
+
+    // Add to new population
+    console.log(best_tree);
+    new_pop.push(best_tree);
+  }
+
+  pop.trees = new_pop;
+}
+
+function evolve(config) {
+  // console.log(config.fs);
+  // console.log(config.ts);
+  // console.log(config.max_depth);
+  // console.log(config.pop_size);
+  // console.log(pop);
+  // console.log(config);
+  var pop = population_new(config.dataset,
+                           config.fs,
+                           config.ts,
+                           config.max_depth,
+                           config.pop_size);
+
+  // for (var gen = 0; gen < config.max_iter; gen++) {
+    // Evaluate and select
+    population_eval(pop, config.dataset);
+    tournament_selection(pop, config.t_size);
+    console.log(pop);
+
+    // // Crossover
+    // for (var i = 0; i < config.pop_size; i+=2) {
+    //   if (randf(0.0, 1.0) > 0.2) {
+    //     console.log(i);
+    //     console.log(pop.trees[i]);
+    //     console.log(pop.trees[i + 1]);
+    //     point_crossover(pop.trees[i], pop.trees[i + 1]);
+    //   }
+    // }
+
+    // // Mutate
+    // for (var i = 0; i < config.pop_size; i++) {
+    //   if (randf(0.0, 1.0) > 0.02) {
+    //     point_mutation(fs, ts, pop.trees[i]);
+    //   }
+    // }
+
+  //   var best_tree = population_best(pop);
+  //   tree_print_equation(best_tree);
+  //   console.log("score: ", best_tree.score);
+  //   console.log();
+  // }
+}
+
+/******************************************************************************
+ *                                 TEST
  ******************************************************************************/
 
 function test_point_mutation() {
@@ -508,19 +656,14 @@ function test_point_crossover() {
 function test_eval_tree() {
   console.time("eval_tree");
   data = {
-    "inputs": {
-      "x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-    },
-    "response": {
-      "y": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-    },
+    "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+    "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
     "size": 10
   };
 
   tree = tree_generate(FULL, fs, ts, 2);
-  result = eval_tree(tree, data);
+  eval_tree(tree, data);
   tree_print_equation(tree);
-  console.log(result);
 
   // var workers = [];
   // workers.push(new Worker("sr_worker.js"));
@@ -533,6 +676,73 @@ function test_eval_tree() {
   console.timeEnd("eval_tree");
 }
 
+function test_population_new() {
+  var dataset = {};
+  var max_depth = 2;
+  var pop_size = 10;
+  var population = population_new(dataset, fs, ts, max_depth, pop_size);
+  console.log(population);
+}
+
+function test_population_eval() {
+  var dataset = {
+    "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+    "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+    "size": 10
+  };
+  var tree_size = 2;
+  var pop_size = 10;
+  var pop = population_new(dataset, fs, ts, tree_size, pop_size);
+
+  population_eval(pop, dataset);
+  console.log(pop);
+}
+
+function test_population_best() {
+  var dataset = {
+    "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+    "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+    "size": 10
+  };
+  var tree_size = 2;
+  var pop_size = 10;
+  var pop = population_new(dataset, fs, ts, tree_size, pop_size);
+
+  population_eval(pop, dataset);
+  // best = population_best(pop);
+  console.log(pop);
+  // tree_print(best);
+}
+
+function test_evolve() {
+  var config = {
+    "dataset": {
+      "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+      "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+      "size": 10
+    },
+
+    "size": 100,
+    "fs": fs,
+    "ts": ts,
+
+    "max_depth": 2,
+    "pop_size": 100,
+
+    "t_size": 5,
+
+    "max_iter": 100,
+  };
+
+  evolve(config);
+
+
+}
+
 // test_point_mutation();
 // test_point_crossover();
-test_eval_tree();
+// test_eval_tree();
+// test_population_new();
+// test_population_eval();
+// test_population_best();
+// test_evolve();
