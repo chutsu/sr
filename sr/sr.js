@@ -578,7 +578,6 @@ function tournament_selection(pop, t_size) {
     }
 
     // Add to new population
-    console.log(best_tree);
     new_pop.push(best_tree);
   }
 
@@ -733,10 +732,7 @@ function test_evolve() {
 
     "max_iter": 100,
   };
-
   evolve(config);
-
-
 }
 
 // test_point_mutation();
@@ -745,4 +741,4 @@ function test_evolve() {
 // test_population_new();
 // test_population_eval();
 // test_population_best();
-// test_evolve();
+test_evolve();

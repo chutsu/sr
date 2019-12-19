@@ -19,4 +19,6 @@ set -e
 # ./build/tests/test_sr --target test_point_mutation
 # ./build/tests/test_sr --target test_point_crossover
 
-cd sr && node sr.js
+# cd sr && node sr.js
+
+python sr/sr.py
