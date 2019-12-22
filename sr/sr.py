@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-from math import ceil
-from math import floor
-from math import pow
-from math import sqrt
-from random import seed
-from random import randint
-from random import uniform
+import time
+import math
+import random
+import datetime
+import copy
 import unittest
 
 
-# FUNCTION SET
+############################### FUNCTION SET #################################
 ADD = "ADD"
 SUB = "SUB"
 MUL = "MUL"
@@ -28,7 +26,8 @@ fs = [
     {"type": "LOG", "arity": 1}
 ]
 
-# TERMINAL SET
+
+############################### TERMINAL SET #################################
 CONST = 0
 INPUT = 1
 EVAL = 2
@@ -46,10 +45,11 @@ ts = [
     {"type": CONST, "value": 9.0},
     {"type": CONST, "value": 10.0},
     {"type": INPUT, "value": "x"},
-    {"type": INPUT, "value": "y"}
+    # {"type": INPUT, "value": "y"}
 ];
 
-# NODE
+
+################################## NODE ######################################
 FUNC_NODE = 0
 TERM_NODE = 1
 
@@ -106,13 +106,13 @@ class Node:
 
     @staticmethod
     def random_func(fs):
-        idx = randint(0, len(fs) - 1);
+        idx = random.randint(0, len(fs) - 1);
         func = fs[idx];
         return Node.setup_func(func["type"], func["arity"])
 
     @staticmethod
     def random_term(ts):
-        idx = randint(0, len(ts) - 1)
+        idx = random.randint(0, len(ts) - 1)
         term = ts[idx]
 
         if term["type"] == INPUT:
@@ -134,13 +134,14 @@ class Node:
                 line += "Opps! Invalid def type[" + self.func + "]!"
             line += "arity: " + str(self.arity)
         elif self.type == TERM_NODE:
-            line += "data: " + self.data
+            line += "data: " + str(self.data)
         else:
             line += "Opps! Invalid node type [" + str(self.type) + "]!"
+
         return line
 
 
-# TREE
+################################## TREE ######################################
 class Tree:
     def __init__(self):
         self.root = None
@@ -149,30 +150,6 @@ class Tree:
 
         self.error = 0.0
         self.score = 0.0
-
-    def _print_traverse(self, s, node):
-        if node.type == TERM_NODE:
-            s += "  " + str(node) + "\n"
-            return s
-
-        s += "  " + str(node) + "\n"
-        for i in range(node.arity):
-            s = self._print_traverse(s, node.children[i])
-
-        return s
-
-    # def print(self):
-    #     props_str = ""
-    #     props_str += "tree.depth: " + self.depth + "\n"
-    #     props_str += "tree.size: " + self.size + "\n"
-    #     props_str += "tree.error: " + self.error + "\n"
-    #     props_str += "tree.score: " + self.score + "\n"
-    #     props_str += "tree.hits: " + self.hits + "\n"
-    #     props_str += "tree.nodes:\n"
-    #
-    #     nodes_str = ""
-    #     nodes_str = self._print_traverse(nodes_str, self.root)
-    #     print(props_str + nodes_str)
 
     @staticmethod
     def _build(method, tree, node, fs, ts, curr_depth, max_depth):
@@ -190,7 +167,7 @@ class Tree:
                 node.children[i] = child
                 tree.size += 1
 
-            elif (method == "GROW" and uniform(0, 1.0) > 0.5):
+            elif (method == "GROW" and random.uniform(0, 1.0) > 0.5):
                 # Create terminal node
                 child = Node.random_term(ts)
                 child.parent = node
@@ -221,7 +198,7 @@ class Tree:
         if method == "FULL" or method == "GROW":
             return Tree._build(method, t, t.root, fs, ts, 1, max_depth)
         elif method == "RAMPED_HALF_AND_HALF":
-            if (uniform(0.0, 1.0) > 0.5):
+            if (random.uniform(0.0, 1.0) > 0.5):
                 return Tree._build("FULL", t, t.root, fs, ts, 1, max_depth);
             else:
                 return Tree._build("GROW", t, t.root, fs, ts, 1, max_depth);
@@ -265,8 +242,32 @@ class Tree:
     def print_equation(self):
         print(self.eq_str())
 
+    def _str_traverse(self, s, node):
+        if node.type == TERM_NODE:
+            s += "  " + str(node) + "\n"
+            return s
 
-# MUTATION
+        s += "  " + str(node) + "\n"
+        for i in range(node.arity):
+            s = self._str_traverse(s, node.children[i])
+
+        return s
+
+    def __str__(self):
+        props_str = ""
+        props_str += "tree.depth: " + str(self.depth) + "\n"
+        props_str += "tree.size: " + str(self.size) + "\n"
+        props_str += "tree.error: " + str(self.error) + "\n"
+        props_str += "tree.score: " + str(self.score) + "\n"
+        props_str += "tree.nodes:\n"
+
+        nodes_str = ""
+        nodes_str = self._str_traverse(nodes_str, self.root)
+
+        return (props_str + nodes_str).strip()
+
+
+############################## MUTATION ####################################
 def _mutate_term_node(ts, node):
     for attempts in range(1000):
         new_node = Node.random_term(ts);
@@ -279,7 +280,7 @@ def _mutate_term_node(ts, node):
 
 def _mutate_func_node(fs, node):
     for attempts in range(1000):
-        index = randint(0, len(fs) - 1)
+        index = random.randint(0, len(fs) - 1)
         func = fs[index]
         if (func["type"] != node.func and func["arity"] == node.arity):
             node.func = func["type"];
@@ -289,7 +290,7 @@ def _mutate_func_node(fs, node):
 
 
 def point_mutation(fs, ts, tree):
-    idx = randint(0, tree.size - 1);
+    idx = random.randint(0, tree.size - 1);
     node = tree.get_node(idx);
 
     if node.type == TERM_NODE:
@@ -298,13 +299,12 @@ def point_mutation(fs, ts, tree):
         node = _mutate_func_node(fs, node);
 
 
-# CROSSOVER
-
+############################## CROSSOVER ####################################
 def point_crossover(t1, t2):
-    idx = randint(1, t1.size - 1)
+    idx = random.randint(1, t1.size - 1)
     t1_node = t1.get_node(idx)
 
-    idx = randint(1, t2.size - 1)
+    idx = random.randint(1, t2.size - 1)
     t2_node = t2.get_node(idx)
 
     t1_nth_child = t1_node.nth_child
@@ -313,10 +313,92 @@ def point_crossover(t1, t2):
     t2_node.parent.children[t2_nth_child] = t1_node
 
 
-# REGRESSION
+############################### SELECTION ####################################
+def tournament_selection(trees, t_size):
+    assert(t_size > 1)
+    pop_size = len(trees)
+    new_gen = []
+
+    for i in range(pop_size):
+        # Create tournament
+        tournament = []
+        for j in range(t_size):
+            idx = random.randint(0, pop_size - 1)
+            tournament.append(trees[idx])
+
+        # Select best from tournament
+        best_tree = tournament[0]
+        for j in range(0, len(tournament)):
+            if tournament[j].score < best_tree.score:
+                best_tree = tournament[j]
+
+        # Add to new population
+        new_gen.append(copy.deepcopy(best_tree))
+
+    return new_gen
+
+
+############################## POPULATION ###################################
+class Population:
+    def __init__(self, dataset, fs, ts, max_depth, pop_size):
+        assert(dataset != None)
+        assert(fs != None)
+        assert(ts != None)
+        assert(max_depth > 1)
+        assert(pop_size >= 10)
+
+        self.dataset = dataset
+        self.fs = fs
+        self.ts = ts
+        self.max_depth = max_depth
+        self.pop_size = pop_size
+
+        self.trees = []
+        for i in range(pop_size):
+            t = Tree.generate("FULL", fs, ts, max_depth)
+            self.trees.append(t)
+
+    def eval(self):
+        for i in range(len(self.trees)):
+            eval_tree(self.trees[i], self.dataset)
+
+    def best(self):
+        best_tree = self.trees[0]
+        for i in range(len(self.trees)):
+            if self.trees[i].score < best_tree.score:
+                best_tree = self.trees[i]
+        return best_tree
+
+    def __str__(self):
+        s = ""
+        for i in range(len(self.trees)):
+            score = self.trees[i].score
+            eq = self.trees[i].eq_str()
+            s += "eq: %s [score: %f]\n" % (eq, score)
+        return s
+
+
+############################## REGRESSION ###################################
+class Config:
+    def __init__(self, dataset, fs, ts, **kwargs):
+        # Data
+        self.dataset = dataset
+
+        # Tree settings
+        self.fs = fs
+        self.ts = ts
+        self.max_depth = kwargs.get("max_depth", 2)
+
+        # Evolve settings
+        self.pop_size = kwargs.get("pop_size", 1000)
+        self.max_iter = kwargs.get("max_iter", 500)
+        self.prob_crossover = kwargs.get("prob_crossover", 0.2)
+        self.prob_mutate = kwargs.get("prob_mutate", 0.02)
+
+
 def _eval_resolve_node(node, dataset):
     if node.data_type == CONST:
-        return [i for i in range(dataset.size)]
+        return [i for i in range(dataset["size"])]
     elif node.data_type == INPUT:
         return dataset["inputs"][node.data]
     elif node.data_type == EVAL:
@@ -329,208 +411,110 @@ def eval_tree(tree, dataset):
     eq_stack = tree.stack()
     eval_stack = []
 
-    while (len(eq_stack) != 0):
-        node = eq_stack.pop()
+    try:
+        while (len(eq_stack) != 0):
+            node = eq_stack.pop()
 
-        if node.type == FUNC_NODE:
-            args = []
-            for i in range(node.arity):
-                args.push(eval_stack.pop())
+            if node.type == FUNC_NODE:
+                args = [eval_stack.pop() for i in range(node.arity)]
+                result = []
+                arg0 = []
+                arg1 = []
 
-            result = []
-            arg0 = []
-            arg1 = []
+                if node.func == ADD:
+                    arg0 = _eval_resolve_node(args[1], dataset)
+                    arg1 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(arg0[i] + arg1[i])
 
-            if node.func == ADD:
-                arg0 = _eval_resolve_node(args[1], dataset)
-                arg1 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(arg0[i] + arg1[i])
+                elif node.func == SUB:
+                    arg0 = _eval_resolve_node(args[1], dataset)
+                    arg1 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(arg0[i] - arg1[i])
 
-            elif node.func == SUB:
-                arg0 = _eval_resolve_node(args[1], dataset)
-                arg1 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(arg0[i] - arg1[i])
+                elif node.func == MUL:
+                    arg0 = _eval_resolve_node(args[1], dataset)
+                    arg1 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(arg0[i] * arg1[i])
 
-            elif node.func == MUL:
-                arg0 = _eval_resolve_node(args[1], dataset)
-                arg1 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(arg0[i] * arg1[i])
+                elif node.func == DIV:
+                    arg0 = _eval_resolve_node(args[1], dataset)
+                    arg1 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(arg0[i] / arg1[i])
 
-            elif node.func == DIV:
-                arg0 = _eval_resolve_node(args[1], dataset)
-                arg1 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(arg0[i] / arg1[i])
+                elif node.func == POW:
+                    arg0 = _eval_resolve_node(args[1], dataset)
+                    arg1 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(math.pow(arg0[i], arg1[i]))
 
-            elif node.func == POW:
-                arg0 = _eval_resolve_node(args[1], dataset)
-                arg1 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(pow(arg0[i], arg1[i]))
+                elif node.func == EXP:
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(math.exp(arg0[i]))
 
-            elif node.func == EXP:
-                arg0 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(exp(arg0[i]))
+                elif node.func == LOG:
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    for i in range(dataset["size"]):
+                        result.append(math.log(arg0[i]))
 
-            elif node.func == LOG:
-                arg0 = _eval_resolve_node(args[0], dataset)
-                for i in range(dataset.size):
-                    result.append(log(arg0[i]))
+                eval_stack.append(Node.setup_eval(result))
 
-            eval_stack.append(Node.setup_eval(result))
+            else:
+                eval_stack.append(node)
 
-        else:
-            eval_stack.append(node)
+        # Calculate RMSE
+        predicted = eval_stack.pop().data
+        response = dataset["response"]
+        n = dataset["size"]
+        err_sq = 0.0
+        for i in range(n):
+            err_sq += math.pow(predicted[i] - response[i], 2)
+        rmse = math.sqrt(err_sq / n)
 
-    # Calculate RMSE
-    predicted = eval_stack.pop().data
-    response = dataset.response
-    err_sq = 0.0
-    for i in range(predicted.length):
-        err_sq += pow(predicted[i] - response[i], 2)
-    rmse = sqrt(err_sq / predicted.length)
+        # Set error and score
+        tree.error = rmse
+        tree.score = rmse
 
-    # Set error and score
-    tree.error = rmse
-    tree.score = rmse
+    except Exception:
+        # Set error and score
+        tree.error = float("inf")
+        tree.score = float("inf")
+        return False
 
-
-# GENETIC PROGRAMMING
-# def population_new(dataset, fs, ts, max_depth, pop_size) {
-#   console.assert(dataset != None, {dataset});
-#   console.assert(fs != None, {fs});
-#   console.assert(ts != None, {ts});
-#   console.assert(max_depth > 1, {max_depth});
-#   console.assert(pop_size >= 10, {pop_size});
-#
-#   var pop = {
-#     "trees": [],
-#
-#     "dataset": dataset,
-#     "fs": fs,
-#     "ts": ts,
-#
-#     "pop_size": 10,
-#     "t_size": 5,
-#   };
-#
-#   for (var i = 0; i < pop_size; i++) {
-#     var tree = tree_generate(FULL, fs, ts, max_depth);
-#     pop.trees.push(tree);
-#   }
-#
-#   return pop;
-# }
-#
-# def population_print(pop) {
-#   for (var i = 0; i < pop.trees.length; i++) {
-#     var score = pop.trees[i].score.toFixed(4);
-#     var eq = tree_equation_str(pop.trees[i]);
-#     console.log("eq: %s [score: %s]", eq, score.toString(10).padStart(4));
-#   }
-# }
-#
-# def population_eval(pop, dataset) {
-#   console.assert(pop != None, {pop});
-#   console.assert(dataset != None, {dataset});
-#
-#   for (var i = 0; i < pop.trees.length; i++) {
-#     eval_tree(pop.trees[i], dataset);
-#   }
-# }
-#
-# def population_best(pop) {
-#   var best_tree = pop.trees[0];
-#
-#   for (var i = 1; i < pop.trees.length; i++) {
-#     if (pop.trees[i].score < best_tree.score) {
-#       best_tree = pop.trees[i];
-#     }
-#   }
-#
-#   return best_tree;
-# }
-#
-#
-# def tournament_selection(pop, t_size) {
-#   console.assert(t_size > 1, {t_size});
-#
-#   var new_pop = [];
-#
-#   for (var j = 0; j < pop.trees.length; j++) {
-#     // Create tournament
-#     var tournament = [];
-#     for (var i = 0; i < t_size; i++) {
-#       var idx = randint(0, pop.trees.length);
-#       tournament.push(pop.trees[idx]);
-#     }
-#
-#     // Select best from tournament
-#     var best_tree = tournament[0];
-#     for (var i = 1; i < t_size; i++) {
-#       console.log(tournament[i]);
-#       console.log(best_tree);
-#       if (tournament[i].score < best_tree.score) {
-#         best_tree = tournament[i];
-#       }
-#     }
-#
-#     // Add to new population
-#     new_pop.push(best_tree);
-#   }
-#
-#   pop.trees = new_pop;
-# }
-#
-# def evolve(config) {
-#   // console.log(config.fs);
-#   // console.log(config.ts);
-#   // console.log(config.max_depth);
-#   // console.log(config.pop_size);
-#   // console.log(pop);
-#   // console.log(config);
-#   var pop = population_new(config.dataset,
-#                            config.fs,
-#                            config.ts,
-#                            config.max_depth,
-#                            config.pop_size);
-#
-#   // for (var gen = 0; gen < config.max_iter; gen++) {
-#     // Evaluate and select
-#     population_eval(pop, config.dataset);
-#     tournament_selection(pop, config.t_size);
-#     console.log(pop);
-#
-#     // // Crossover
-#     // for (var i = 0; i < config.pop_size; i+=2) {
-#     //   if (uniform(0.0, 1.0) > 0.2) {
-#     //     console.log(i);
-#     //     console.log(pop.trees[i]);
-#     //     console.log(pop.trees[i + 1]);
-#     //     point_crossover(pop.trees[i], pop.trees[i + 1]);
-#     //   }
-#     // }
-#
-#     // // Mutate
-#     // for (var i = 0; i < config.pop_size; i++) {
-#     //   if (uniform(0.0, 1.0) > 0.02) {
-#     //     point_mutation(fs, ts, pop.trees[i]);
-#     //   }
-#     // }
-#
-#   //   var best_tree = population_best(pop);
-#   //   tree_print_equation(best_tree);
-#   //   console.log("score: ", best_tree.score);
-#   //   console.log();
-#   // }
-# }
+    return True
 
 
-# TEST
+def regress(config):
+    pop = Population(config.dataset,
+                     config.fs,
+                     config.ts,
+                     config.max_depth,
+                     config.pop_size)
+
+    for i in range(config.max_iter):
+            # Evaluate and select
+            pop.eval()
+            tournament_selection(pop.trees, 2)
+
+            # Crossover
+            for idx in range(0, len(pop.trees), 2):
+                if random.uniform(0.0, 1.0) > config.prob_crossover:
+                    point_crossover(pop.trees[idx], pop.trees[idx + 1]);
+
+            # Mutate
+            for t in pop.trees:
+                if random.uniform(0.0, 1.0) > config.prob_mutate:
+                    point_mutation(fs, ts, t)
+
+            best_tree = pop.best();
+            print(best_tree.eq_str() + " score: " + str(best_tree.score))
+
+
+############################### UNIT-TESTS ###################################
 class TestNode(unittest.TestCase):
     def test_node(self):
         n = Node()
@@ -591,98 +575,121 @@ class TestMutation(unittest.TestCase):
 
 class TestCrossover(unittest.TestCase):
     def test_point_crossover(self):
-        seed(0)
         t1 = Tree.generate("FULL", fs, ts, 2)
         t2 = Tree.generate("FULL", fs, ts, 2)
-        t1.print_equation()
-        t2.print_equation()
 
+        t1_old = copy.deepcopy(t1)
+        t2_old = copy.deepcopy(t2)
         point_crossover(t1, t2)
-        t1.print_equation()
-        t2.print_equation()
+
+        self.assertTrue(t1_old.eq_str() != t1.eq_str())
+        self.assertTrue(t2_old.eq_str() != t2.eq_str())
+
+        debug = False
+        if debug:
+            t1_old.print_equation()
+            t2_old.print_equation()
+            t1_old.print_equation()
+            t2_old.print_equation()
+
+class TestSelection(unittest.TestCase):
+    def test_tournament_selection(self):
+        # Test
+        trees = [Tree.generate("FULL", fs, ts, 2) for i in range(10)]
+        t_size = 10000
+        trees[0].score = -1.0 * float("inf")
+        new_trees = tournament_selection(trees, t_size)
+
+        # Assert
+        for t in new_trees:
+            self.assertTrue(t.score == -1.0 * float("inf"))
+
+        # Debug
+        debug = False
+        if debug:
+            # Old trees
+            print("-" * 78)
+            print("trees:")
+            for t in trees:
+                print("\t" + t.eq_str() + "[score: " + str(t.score) + "]")
+
+            # New trees
+            print("\nnew_trees:")
+            for t in new_trees:
+                print("\t" + t.eq_str() + "[score: " + str(t.score) + "]")
+            print("-" * 78)
+
+class TestPopulation(unittest.TestCase):
+    def test_population(self):
+        dataset = {}
+        max_depth = 2
+        pop_size = 10
+        pop = Population(dataset, fs, ts, max_depth, pop_size)
+
+        self.assertTrue(pop.dataset == dataset)
+        self.assertTrue(pop.max_depth == max_depth)
+        self.assertTrue(pop.pop_size == pop_size)
+        self.assertTrue(len(pop.trees) > 0)
+
+    def test_eval(self):
+        dataset = {
+            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "size": 10
+        }
+        max_depth = 2
+        pop_size = 10
+        pop = Population(dataset, fs, ts, max_depth, pop_size)
+        pop.eval()
+
+        for t in pop.trees:
+            self.assertTrue(t.score != 0.0)
+
+    def test_best(self):
+        dataset = {
+            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "size": 10
+        }
+        max_depth = 2
+        pop_size = 10
+        pop = Population(dataset, fs, ts, max_depth, pop_size)
+        pop.eval()
+        best_tree = pop.best()
+
+        debug = False
+        if debug:
+            print("BEST TREE: " + str(best_tree))
 
 class TestRegression(unittest.TestCase):
     def test_eval_tree(self):
-        pass
-        # console.time("eval_tree");
-        # data = {
-        #     "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-        #     "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-        #     "size": 10
-        # };
-        #
-        # tree = tree_generate("FULL", fs, ts, 2);
-        # eval_tree(tree, data);
-        # tree_print_equation(tree);
+        t_start = time.time()
+        dataset = {
+            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "size": 10
+        }
+
+        tree = Tree.generate("FULL", fs, ts, 2)
+        eval_tree(tree, dataset)
+        t_end = time.time()
+
+        debug = False
+        if debug:
+            print(tree)
+            print("Time taken: %fs" % (t_end - t_start))
+
+    # def test_regress(self):
+    #     dataset = {
+    #         "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
+    #         "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+    #         "size": 10
+    #     }
+    #
+    #     config = Config(dataset, fs, ts)
+    #     regress(config)
 
 
-# def test_population_new() {
-#   var dataset = {};
-#   var max_depth = 2;
-#   var pop_size = 10;
-#   var population = population_new(dataset, fs, ts, max_depth, pop_size);
-#   console.log(population);
-# }
-#
-# def test_population_eval() {
-#   var dataset = {
-#     "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-#     "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-#     "size": 10
-#   };
-#   var tree_size = 2;
-#   var pop_size = 10;
-#   var pop = population_new(dataset, fs, ts, tree_size, pop_size);
-#
-#   population_eval(pop, dataset);
-#   console.log(pop);
-# }
-#
-# def test_population_best() {
-#   var dataset = {
-#     "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-#     "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-#     "size": 10
-#   };
-#   var tree_size = 2;
-#   var pop_size = 10;
-#   var pop = population_new(dataset, fs, ts, tree_size, pop_size);
-#
-#   population_eval(pop, dataset);
-#   // best = population_best(pop);
-#   console.log(pop);
-#   // tree_print(best);
-# }
-#
-# def test_evolve() {
-#   var config = {
-#     "dataset": {
-#       "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-#       "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-#       "size": 10
-#     },
-#
-#     "size": 100,
-#     "fs": fs,
-#     "ts": ts,
-#
-#     "max_depth": 2,
-#     "pop_size": 100,
-#
-#     "t_size": 5,
-#
-#     "max_iter": 100,
-#   };
-#   evolve(config);
-# }
-
-
-unittest.main()
-
-# // test_point_mutation();
-# // test_point_crossover();
-# // test_eval_tree();
-# // test_population_new();
-# // test_population_eval();
-# // test_population_best();
-# test_evolve();
+if __name__ == "__main__":
+    random.seed(datetime.datetime.now())
+    unittest.main()
