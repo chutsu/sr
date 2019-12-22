@@ -224,6 +224,23 @@ class Tree:
         stack = self.stack()
         return stack[index]
 
+    def _update_traverse(self, node, depth):
+        if depth > self.depth:
+            self.depth = depth
+
+        if node.type == TERM_NODE:
+            self.size += 1
+            return
+
+        self.size += 1
+        for i in range(node.arity):
+            self._update_traverse(node.children[i], depth + 1)
+
+    def update(self):
+        self.depth = 0
+        self.size = 0
+        self._update_traverse(self.root, self.depth)
+
     def _eq_str_traverse(self, s, node):
         if node.type == TERM_NODE:
             s += str(node.data) + " "
@@ -312,6 +329,9 @@ def point_crossover(t1, t2):
     t1_node.parent.children[t1_nth_child] = t2_node
     t2_node.parent.children[t2_nth_child] = t1_node
 
+    t1.update()
+    t2.update()
+
 
 ############################### SELECTION ####################################
 def tournament_selection(trees, t_size):
@@ -392,8 +412,8 @@ class Config:
         # Evolve settings
         self.pop_size = kwargs.get("pop_size", 1000)
         self.max_iter = kwargs.get("max_iter", 500)
-        self.prob_crossover = kwargs.get("prob_crossover", 0.2)
-        self.prob_mutate = kwargs.get("prob_mutate", 0.02)
+        self.prob_crossover = kwargs.get("prob_crossover", 0.5)
+        self.prob_mutate = kwargs.get("prob_mutate", 0.2)
 
 
 def _eval_resolve_node(node, dataset):
@@ -422,32 +442,32 @@ def eval_tree(tree, dataset):
                 arg1 = []
 
                 if node.func == ADD:
-                    arg0 = _eval_resolve_node(args[1], dataset)
-                    arg1 = _eval_resolve_node(args[0], dataset)
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    arg1 = _eval_resolve_node(args[1], dataset)
                     for i in range(dataset["size"]):
                         result.append(arg0[i] + arg1[i])
 
                 elif node.func == SUB:
-                    arg0 = _eval_resolve_node(args[1], dataset)
-                    arg1 = _eval_resolve_node(args[0], dataset)
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    arg1 = _eval_resolve_node(args[1], dataset)
                     for i in range(dataset["size"]):
                         result.append(arg0[i] - arg1[i])
 
                 elif node.func == MUL:
-                    arg0 = _eval_resolve_node(args[1], dataset)
-                    arg1 = _eval_resolve_node(args[0], dataset)
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    arg1 = _eval_resolve_node(args[1], dataset)
                     for i in range(dataset["size"]):
                         result.append(arg0[i] * arg1[i])
 
                 elif node.func == DIV:
-                    arg0 = _eval_resolve_node(args[1], dataset)
-                    arg1 = _eval_resolve_node(args[0], dataset)
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    arg1 = _eval_resolve_node(args[1], dataset)
                     for i in range(dataset["size"]):
                         result.append(arg0[i] / arg1[i])
 
                 elif node.func == POW:
-                    arg0 = _eval_resolve_node(args[1], dataset)
-                    arg1 = _eval_resolve_node(args[0], dataset)
+                    arg0 = _eval_resolve_node(args[0], dataset)
+                    arg1 = _eval_resolve_node(args[1], dataset)
                     for i in range(dataset["size"]):
                         result.append(math.pow(arg0[i], arg1[i]))
 
@@ -475,9 +495,16 @@ def eval_tree(tree, dataset):
             err_sq += math.pow(predicted[i] - response[i], 2)
         rmse = math.sqrt(err_sq / n)
 
+        if (rmse == 0.0):
+            print("predicted: %f" % predicted[0])
+            print("response: %f" % response[0])
+            print("error: %f" % (predicted[i] - response[i]))
+            print(tree)
+            exit(0)
+
         # Set error and score
         tree.error = rmse
-        tree.score = rmse
+        tree.score = rmse + (tree.size) * 0.1
 
     except Exception:
         # Set error and score
@@ -496,22 +523,29 @@ def regress(config):
                      config.pop_size)
 
     for i in range(config.max_iter):
-            # Evaluate and select
-            pop.eval()
-            tournament_selection(pop.trees, 2)
+        # Evaluate and select
+        pop.eval()
+        t_size = int(len(pop.trees) * 0.05)
+        pop.trees = tournament_selection(pop.trees, t_size)
 
-            # Crossover
-            for idx in range(0, len(pop.trees), 2):
-                if random.uniform(0.0, 1.0) > config.prob_crossover:
-                    point_crossover(pop.trees[idx], pop.trees[idx + 1]);
+        # Crossover
+        for idx in range(0, len(pop.trees), 2):
+            if random.uniform(0.0, 1.0) > config.prob_crossover:
+                point_crossover(pop.trees[idx], pop.trees[idx + 1]);
 
-            # Mutate
-            for t in pop.trees:
-                if random.uniform(0.0, 1.0) > config.prob_mutate:
-                    point_mutation(fs, ts, t)
+        # Mutate
+        for t in pop.trees:
+            if random.uniform(0.0, 1.0) > config.prob_mutate:
+                point_mutation(fs, ts, t)
 
-            best_tree = pop.best();
-            print(best_tree.eq_str() + " score: " + str(best_tree.score))
+        best_tree = pop.best();
+
+        status = ""
+        status += "iter: %d " % (i)
+        status += best_tree.eq_str() + " "
+        status += "score: " + str(best_tree.score) + " "
+        status += "error: " + str(best_tree.error) + " "
+        print(status)
 
 
 ############################### UNIT-TESTS ###################################
@@ -582,10 +616,17 @@ class TestCrossover(unittest.TestCase):
         t2_old = copy.deepcopy(t2)
         point_crossover(t1, t2)
 
+        print(t1)
+        print("-" * 78)
+        print(t2)
+        point_mutation(fs, ts, t1)
+        point_mutation(fs, ts, t2)
+
         self.assertTrue(t1_old.eq_str() != t1.eq_str())
         self.assertTrue(t2_old.eq_str() != t2.eq_str())
 
         debug = False
+        # debug = True
         if debug:
             t1_old.print_equation()
             t2_old.print_equation()
@@ -673,21 +714,28 @@ class TestRegression(unittest.TestCase):
         tree = Tree.generate("FULL", fs, ts, 2)
         eval_tree(tree, dataset)
         t_end = time.time()
+        print(tree)
 
         debug = False
         if debug:
             print(tree)
             print("Time taken: %fs" % (t_end - t_start))
 
-    # def test_regress(self):
-    #     dataset = {
-    #         "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-    #         "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
-    #         "size": 10
-    #     }
-    #
-    #     config = Config(dataset, fs, ts)
-    #     regress(config)
+    def test_regress(self):
+        x_data = range(10)
+        y_data = [math.pow(x, 2) + 10.0 for x in x_data]
+
+        dataset = {
+            "inputs": {"x": x_data},
+            "response": y_data,
+            "size": 10
+        }
+
+        import pprint
+        pprint.pprint(dataset)
+
+        config = Config(dataset, fs, ts)
+        regress(config)
 
 
 if __name__ == "__main__":
