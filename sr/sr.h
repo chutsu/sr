@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 
 #include "sr/utils.h"
@@ -10,6 +11,31 @@
 /* PARAMETERS */
 #define MAX_ARITY 10
 #define MAX_TREE_SIZE 500
+
+/******************************************************************************
+ *                                  STACK
+ ******************************************************************************/
+struct stack_t {
+  void *data[MAX_TREE_SIZE];
+  size_t size;
+} typedef stack_t;
+
+void stack_setup(stack_t *s) {
+  for (int i = 0; i < MAX_TREE_SIZE; i++) {
+    s->data[i] = NULL;
+  }
+  s->size = 0.0;
+}
+
+void stack_push(stack_t *s, void *item) {
+  s->data[s->size] = item;
+  s->size++;
+}
+
+void *stack_pop(stack_t *s) {
+  s->size--;
+  return s->data[s->size];
+}
 
 /******************************************************************************
  *                                FUNCTION SET
@@ -23,6 +49,8 @@
 #define POW 4
 #define EXP 5
 #define LOG 6
+#define SIN 7
+#define COS 8
 
 /* Function Arity */
 #define ADD_ARITY 2
@@ -32,6 +60,8 @@
 #define POW_ARITY 2
 #define EXP_ARITY 1
 #define LOG_ARITY 1
+#define SIN_ARITY 1
+#define COS_ARITY 1
 
 typedef struct function_set_t {
   int *funcs;
@@ -53,6 +83,8 @@ void function_set_print(const function_set_t *fs) {
     case POW: printf("[%d]: POW\tarity: %d\n", i, fs->arity[i]); break;
     case EXP: printf("[%d]: EXP\tarity: %d\n", i, fs->arity[i]); break;
     case LOG: printf("[%d]: LOG\tarity: %d\n", i, fs->arity[i]); break;
+    case SIN: printf("[%d]: SIN\tarity: %d\n", i, fs->arity[i]); break;
+    case COS: printf("[%d]: COS\tarity: %d\n", i, fs->arity[i]); break;
     }
   }
   printf("\n");
@@ -71,7 +103,7 @@ void function_set_print(const function_set_t *fs) {
 typedef struct terminal_t {
   int type;
   union {
-    const char *str;
+    char *str;
     double val;
     double range[2];
   };
@@ -131,19 +163,17 @@ typedef struct node_t {
   /* Terminal node specific */
   int data_type;
   double value;
-  const char *input_name;
+  char *input_name;
+	double *eval_data;
 
   /* Function node specific */
   int function;
   int arity;
   struct node_t *children[MAX_ARITY];
-
-  /* Misc */
-  double error;
 } node_t;
 
-void node_setup(node_t *n) {
-  assert(n != NULL);
+node_t *node_new() {
+  node_t *n = malloc(sizeof(node_t));
 
   /* General */
   n->type = -1;
@@ -151,7 +181,10 @@ void node_setup(node_t *n) {
   n->nth_child = -1;
 
   /* Terminal node specific */
+  n->data_type = -1;
   n->value = 0.0;
+  n->input_name = NULL;
+  n->eval_data = NULL;
 
   /* Function node specific */
   n->function = -1;
@@ -160,28 +193,28 @@ void node_setup(node_t *n) {
     n->children[i] = NULL;
   }
 
-  /* Evaluation */
-  n->error = 0.0;
-}
-
-void node_clear(node_t *n) {
-  assert(n != NULL);
-  node_setup(n);
-}
-
-node_t *node_new() {
-  return malloc(sizeof(node_t));
+	return n;
 }
 
 static void node_delete_traverse(node_t *n) {
+	if (n == NULL) {
+		return;
+	}
+
   if (n->type == TERM_NODE) {
+		if (n->input_name != NULL) {
+			free(n->input_name);
+		}
+		if (n->eval_data != NULL) {
+			free(n->eval_data);
+		}
     free(n);
     n = NULL;
     return;
   }
 
   for (int i = 0; i < n->arity; i++) {
-    node_delete_traverse(n->children[i]);
+		node_delete_traverse(n->children[i]);
   }
   free(n);
   n = NULL;
@@ -190,6 +223,38 @@ static void node_delete_traverse(node_t *n) {
 void node_delete(node_t *n) {
   node_delete_traverse(n);
   n = NULL;
+}
+
+static void node_copy_traverse(const node_t *src, node_t *des) {
+  /* General */
+  des->type = src->type;
+  des->parent = src->parent;
+  des->nth_child = src->nth_child;
+
+  /* Terminal node specific */
+  des->data_type = src->data_type;
+  des->value = src->value;
+  if (src->input_name) {
+    des->input_name = malloc(sizeof(char) * strlen(src->input_name) + 1);
+    strcpy(des->input_name, src->input_name);
+  }
+  if (src->eval_data) {
+    des->eval_data = src->eval_data;
+  }
+
+  /* Function node specific */
+  des->function = src->function;
+  des->arity = src->arity;
+  for (int i = 0; i < des->arity; i++) {
+    des->children[i] = node_new();
+    node_copy_traverse(src->children[i], des->children[i]);
+  }
+}
+
+node_t *node_copy(const node_t *src) {
+  node_t *des = node_new();
+  node_copy_traverse(src, des);
+  return des;
 }
 
 void node_print(const node_t *n) {
@@ -208,6 +273,8 @@ void node_print(const node_t *n) {
     case POW: printf("POW\t"); break;
     case EXP: printf("EXP\t"); break;
     case LOG: printf("LOG\t"); break;
+    case SIN: printf("SIN\t"); break;
+    case COS: printf("COS\t"); break;
     default:
       printf("Opps! Invalid function type[%d]!", n->function);
       break;
@@ -232,63 +299,65 @@ void node_print(const node_t *n) {
   }
 }
 
-void node_setup_func(node_t *n, const int function, const int arity) {
-  assert(n != NULL);
-  node_setup(n);
+node_t *node_new_func(const int function, const int arity) {
+  node_t *n = node_new();
   n->type = FUNC_NODE;
   n->function = function;
   n->arity = arity;
+	return n;
 }
 
-void node_setup_input(node_t *n, const char *input_name) {
-  assert(n != NULL);
-  node_setup(n);
+node_t *node_new_input(char *input_name) {
+  node_t *n = node_new();
   n->type = TERM_NODE;
   n->data_type = INPUT;
-  n->input_name = input_name;
+  n->input_name = malloc(sizeof(char) * strlen(input_name) + 1);
+  strcpy(n->input_name, input_name);
+	return n;
 }
 
-void node_setup_const(node_t *n, double value) {
-  assert(n != NULL);
-  node_setup(n);
+node_t *node_new_const(double value) {
+  node_t *n = node_new();
   n->type = TERM_NODE;
   n->data_type = CONST;
   n->value = value;
+	return n;
 }
 
-/* void node_setup_eval(node_t *n, double *values, size_t n_values) { */
-/*   node_setup(n, TERM_EVAL_NODE); */
-/*   #<{(| n->n_values = n_values; |)}># */
-/*   #<{(| n->values = values; |)}># */
-/* } */
+node_t *node_new_eval(size_t size) {
+  node_t *n = node_new();
+  n->type = TERM_NODE;
+  n->data_type = EVAL;
+  n->eval_data = malloc(sizeof(double) * size);
+	return n;
+}
 
-void random_func(const function_set_t *fs, node_t *n) {
+node_t *random_func(const function_set_t *fs) {
   assert(fs != NULL);
-  assert(n != NULL);
   assert(fs->length > 1);
   const int idx = randi(0, fs->length);
-  node_setup_func(n, fs->funcs[idx], fs->arity[idx]);
+  return node_new_func(fs->funcs[idx], fs->arity[idx]);
 }
 
-void random_term(const terminal_set_t *ts, node_t *n) {
+node_t *random_term(const terminal_set_t *ts) {
   assert(ts != NULL);
-  assert(n != NULL);
   assert(ts->length > 1);
   const int idx = randi(0, ts->length);
   const terminal_t *term = &ts->terms[idx];
 
-  node_setup(n);
   switch (term->type) {
   case INPUT:
-    node_setup_input(n, term->str);
+    return node_new_input(term->str);
     break;
   case CONST:
-    node_setup_const(n, term->val);
+    return node_new_const(term->val);
     break;
   case RCONST:
-    node_setup_const(n, randf(term->range[0], term->range[1]));
+    return node_new_const(randf(term->range[0], term->range[1]));
     break;
   }
+
+	return NULL;
 }
 
 /******************************************************************************
@@ -302,35 +371,37 @@ typedef struct tree_t {
 
   double error;
   double score;
-  int hits;
 } tree_t;
 
-void tree_setup(tree_t *t) {
+tree_t *tree_new() {
+  tree_t *t = malloc(sizeof(tree_t));
   t->root = NULL;
   t->size = 0;
   t->depth = 0;
 
   t->error = 0.0;
   t->score = 0.0;
-  t->hits = 0.0;
-}
-
-void tree_clear(tree_t *t) {
-  if (t->root != NULL) {
-    node_delete(t->root);
-  }
-  tree_setup(t);
-}
-
-tree_t *tree_new() {
-  tree_t *t = malloc(sizeof(tree_t));
-  tree_setup(t);
   return t;
 }
 
 void tree_delete(tree_t *t) {
-  tree_clear(t);
+  if (t->root != NULL) {
+    node_delete(t->root);
+  }
   free(t);
+}
+
+tree_t *tree_copy(const tree_t *src) {
+  tree_t *t = tree_new();
+
+  t->root = node_copy(src->root);
+  t->size = src->size;
+  t->depth = src->depth;
+
+  t->error = src->error;
+  t->score = src->score;
+
+  return t;
 }
 
 static void tree_print_traverse(const node_t *n) {
@@ -352,7 +423,6 @@ void tree_print(const tree_t *t) {
   printf("tree.size: %d\n", t->size);
   printf("tree.error: %f\n", t->error);
   printf("tree.score: %f\n", t->score);
-  printf("tree.hits: %d\n", t->hits);
   printf("tree.nodes:\n");
   tree_print_traverse(t->root);
 }
@@ -383,8 +453,7 @@ static void tree_build(const int method,
   for (int i = 0; i < n->arity; i++) {
     if (curr_depth == max_depth) {
       /* Create terminal node */
-      node_t *child = node_new();
-      random_term(ts, child);
+      node_t *child = random_term(ts);
       child->parent = n;
       child->nth_child = i;
       n->children[i] = child;
@@ -392,8 +461,7 @@ static void tree_build(const int method,
 
     } else if (method == GROW && randf(0, 1.0) > 0.5) {
       /* Create terminal node */
-      node_t *child = node_new();
-      random_term(ts, child);
+      node_t *child = random_term(ts);
       child->parent = n;
       child->nth_child = i;
       n->children[i] = child;
@@ -401,8 +469,7 @@ static void tree_build(const int method,
 
     } else {
       /* Create function node */
-      node_t *child = node_new();
-      random_func(fs, child);
+      node_t *child = random_func(fs);
       child->parent = n;
       child->nth_child = i;
       n->children[i] = child;
@@ -414,21 +481,18 @@ static void tree_build(const int method,
   }
 }
 
-int tree_generate(const int method,
-                  const function_set_t *fs,
-                  const terminal_set_t *ts,
-                  const int max_depth,
-                  tree_t *t) {
+tree_t *tree_generate(const int method,
+                      const function_set_t *fs,
+                      const terminal_set_t *ts,
+                      const int max_depth) {
   assert(method > -1);
   assert(fs != NULL);
   assert(ts != NULL);
   assert(max_depth > 0);
-  assert(t != NULL);
 
   /* Generate tree */
-  tree_setup(t);
-  t->root = node_new();
-  random_func(fs, t->root);
+	tree_t *t = tree_new();
+  t->root = random_func(fs);
   t->size++;
   t->depth++;
 
@@ -445,10 +509,11 @@ int tree_generate(const int method,
       }
       break;
     default:
-      return -1;
+			FATAL("Opps! Unspported tree generation method [%d]!", method);
+      return NULL;
   }
 
-  return 0;
+  return t;
 }
 
 static void tree_update_traverse(tree_t *t, node_t *n, const int depth) {
@@ -519,6 +584,22 @@ try_again:
   return idx;
 }
 
+static void tree_stack_traverse(node_t *n, stack_t *s) {
+  if (n->type == TERM_NODE) {
+    stack_push(s, n);
+    return;
+  }
+
+  stack_push(s, n);
+  for (int i = 0; i < n->arity; i++) {
+    tree_stack_traverse(n->children[i], s);
+  }
+}
+
+void tree_stack(const tree_t *t, stack_t *s) {
+  tree_stack_traverse(t->root, s);
+}
+
 static int subtree_size_traverse(const node_t *n, int size) {
   assert(n != NULL);
 
@@ -541,11 +622,25 @@ int subtree_size(const node_t *root) {
  ******************************************************************************/
 
 static void mutate_term_node(const terminal_set_t *ts, node_t *n) {
-  node_t *parent = n->parent;
-  int nth_child = n->nth_child;
-  random_term(ts, n);
-  n->parent = parent;
-  n->nth_child = nth_child;
+	/* Clear terminal node */
+  n->data_type = -1;
+  n->value = 0.0;
+	if (n->input_name) {
+		free(n->input_name);
+		n->input_name = NULL;
+	}
+
+	/* Mutate terminal node */
+  node_t *new_term = random_term(ts);
+	if (new_term->data_type == INPUT) {
+		n->data_type = INPUT;
+		n->input_name = malloc(sizeof(char) * strlen(new_term->input_name) + 1);
+		strcpy(n->input_name, new_term->input_name);
+	} else if (new_term->data_type == CONST) {
+		n->data_type = CONST;
+		n->value = new_term->value;
+	}
+	node_delete(new_term);
 }
 
 static void mutate_func_node(const function_set_t *fs, node_t *n) {
@@ -597,281 +692,389 @@ void point_crossover(tree_t *t1, tree_t *t2) {
 
   t1_subtree->parent = t2_parent;
   t2_subtree->parent = t1_parent;
+
+	tree_update(t1);
+	tree_update(t2);
+}
+
+/******************************************************************************
+ *                          SELECTION OPERATORS
+ ******************************************************************************/
+
+tree_t **tournament_selection(tree_t **trees,
+                              const size_t nb_trees,
+                              const size_t t_size) {
+  tree_t **new_trees = malloc(sizeof(tree_t *) * nb_trees);
+
+  for (int i = 0; i < nb_trees; i++) {
+    /* Form tournament - keep best */
+    int idx = randi(0, nb_trees);
+    tree_t *best = trees[idx];
+    for (int j = 1; j < t_size; j++) {
+      tree_t *t = trees[randi(0, nb_trees)];
+      if (t->score < best->score) {
+        best = t;
+      }
+    }
+
+    new_trees[i] = tree_copy(best);
+  }
+
+  return new_trees;
 }
 
 /******************************************************************************
  *                              REGRESSION
  ******************************************************************************/
 
-int regression_traverse(int index,
-												int end,
-												struct node **chromosome,
-												struct stack *stack,
-												float **func_input,
-												struct data *d,
-												int resp_col) {
-	int i;
-	float *result = NULL;
-	struct node *eval_node;
-	struct node *n = chromosome[index];
-	struct node *in1 = NULL;
-	struct node *in2 = NULL;
-	int in1_type = -1;
-	int in2_type = -1;
+int csv_rows(const char *fp) {
+	/* Load file */
+  FILE *infile = fopen(fp, "r");
+  if (infile == NULL) {
+		fclose(infile);
+    return -1;
+  }
 
-	errno = 0;
-	if (n->type == TERM_NODE) {
-		stack_push(stack, n);
-
-	} else if (n->type == FUNC_NODE) {
-		/* prep function input data */
-		if (n->arity == 2) {
-			in2 = stack_pop(stack);
-			in1 = stack_pop(stack);
-			in1_type = in1->terminal_type;
-			in2_type = in2->terminal_type;
-			assert(regression_func_input(in1, d, func_input, 0) == 0);
-			assert(regression_func_input(in2, d, func_input, 1) == 0);
-
-
-		} else {
-			in1 = stack_pop(stack);
-			in1_type = in1->terminal_type;
-			silent_check(regression_func_input(in1, d, func_input, 0) == 0);
-
+	/* Loop through lines */
+  int nb_rows = 0;
+	char line[1024] = {0};
+	size_t len_max = 1024;
+  while (fgets(line, len_max, infile) != NULL) {
+		if (line[0] != '#') {
+			nb_rows++;
 		}
+  }
 
-		/* evaluate function */
-		result = malloc(sizeof(float) * (size_t) d->rows);
-		switch (n->function) {
-			case ADD:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = func_input[0][i] + func_input[1][i];
-					silent_check(regression_check() == 0);
-				}
-				break;
+	/* Cleanup */
+	fclose(infile);
 
-			case SUB:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = func_input[0][i] - func_input[1][i];
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case MUL:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = func_input[0][i] * func_input[1][i];
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case DIV:
-				for (i = 0; i < d->rows; i++) {
-					/* check for zero */
-					silent_check(fltcmp(func_input[1][i], 0.0) != 0);
-					result[i] = func_input[0][i] / func_input[1][i];
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case POW:
-				for (i = 0; i < d->rows; i++) {
-					func_input[0][i] = fabsf(func_input[0][i]);
-					result[i] = powf(func_input[0][i], func_input[1][i]);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case LOG:
-				for (i = 0; i < d->rows; i++) {
-					/* check for zero and negative */
-					silent_check(func_input[0][i] > 0.0);
-					result[i] = logf(func_input[0][i]);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case EXP:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = expf(func_input[0][i]);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case RAD:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = func_input[0][i] * (float) (PI / 180.0);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case SIN:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = sinf(func_input[0][i]);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			case COS:
-				for (i = 0; i < d->rows; i++) {
-					result[i] = cosf(func_input[0][i]);
-					silent_check(regression_check() == 0);
-				}
-				break;
-
-			default:
-				/* UNRECOGNIZED FUNCTION */
-				log_err("unrecogized function! %d", n->function);
-				goto func_error;
-		}
-
-		/* Create evaluation node */
-		eval_node = node_new_eval(FLOAT, result, d->rows);
-		if (resp_col != -1) {
-			for (i = 0; i < d->rows; i++) {
-				eval_node->error += fabs(result[i] - d->data[resp_col][i]);
-			}
-		}
-		n->error = eval_node->error;
-
-		/* finish up */
-		stack_push(stack, eval_node);
-		regression_free_inputs(in1_type, in1, in2_type, in2);
-	}
-
-	/* terminate check */
-	if (index == end) {
-		return 0;
-	} else {
-		return regression_traverse(
-				index + 1,
-				end,
-				chromosome,
-				stack,
-				func_input,
-				d,
-				resp_col
-				);
-	}
-
-error:
-	regression_free_inputs(in1_type, in1, in2_type, in2);
-	free(result);
-	return -1;
-
-func_error:
-	regression_free_inputs(in1_type, in1, in2_type, in2);
-	free(result);
-	return -2;
+  return nb_rows;
 }
 
-/* void regression_clear_stack(struct stack *s) */
-/* { */
-/*     int i; */
-/*     struct node *n; */
-/*  */
-/*     for (i = 0; s->size; i++) { */
-/*         n = stack_pop(s); */
-/*         if (n->terminal_type == EVAL) { */
-/*             node_destroy(n); */
-/*         } */
-/*     } */
-/*     free(s); */
-/* } */
+int csv_cols(const char *fp) {
+	/* Load file */
+  FILE *infile = fopen(fp, "r");
+  if (infile == NULL) {
+		fclose(infile);
+    return -1;
+  }
 
-/* int regression_evaluate_tree(struct tree *t, struct data *d, const char *resp) */
-/* { */
-/*     int i; */
-/*     int col; */
-/*     int res; */
-/*     int hits; */
-/*     float value; */
-/*     float err; */
-/*     float sse; */
-/*     float **func_input; */
-/*     struct stack *s; */
-/*     struct node *result; */
-/*  */
-/*     #<{(| setup |)}># */
-/*     hits = 0; */
-/*     col = data_field_index(d, resp); */
-/*     value = 0.0f; */
-/*     err = 0.0; */
-/*     sse = 0.0; */
-/*     s = stack_new(); */
-/*  */
-/*     #<{(| pre-check |)}># */
-/*     check(col >= 0, "col is not found!"); */
-/*  */
-/*     #<{(| initialize func_input |)}># */
-/*     func_input = malloc(sizeof(float *) * 2); */
-/*     for (i = 0; i < 2; i++) { */
-/*         func_input[i] = malloc(sizeof(float) * (size_t) d->rows); */
-/*     } */
-/*  */
-/*     #<{(| evaluate chromosome |)}># */
-/*     res = regression_traverse( */
-/*         0, */
-/*         t->size - 1, */
-/*         t->chromosome, */
-/*         s, */
-/*         func_input, */
-/*         d, */
-/*         col */
-/*     ); */
-/*     #<{(| check(res != -1, "Failed to evaluate tree %s", regression_string(t)); |)}># */
-/*     silent_check(res != -1); */
-/*  */
-/*     #<{(| check results |)}># */
-/*     result = stack_pop(s); */
-/*     for (i = 0; i < d->rows; i++) { */
-/*         value = ((float *) result->values)[i]; */
-/*         err = (float) fabs(value - d->data[col][i]); */
-/*         err = (float) pow(err, 2); */
-/*         sse += err; */
-/*  */
-/*         if (fltcmp(err, 0.0f) == 0) { */
-/*             hits++; */
-/*         } */
-/*     } */
-/*  */
-/*     #<{(| record evaluation |)}># */
-/*     t->error = sse; */
-/*     if (t->score == NULL) { */
-/*         t->score = malloc_float(sse + (t->size * 0.1)); */
-/*         #<{(| t->score = malloc_float(sse); |)}># */
-/*     } else { */
-/*         *t->score = (float) (sse + (t->size * 0.1)); */
-/*         #<{(| *t->score = (float) sse; |)}># */
-/*     } */
-/*     #<{(| if (isnan(sse) || isinf(sse) || sse > 10000) { |)}># */
-/*     #<{(|     if (t->score != NULL) { |)}># */
-/*     #<{(|         free(t->score); |)}># */
-/*     #<{(|         t->score = NULL; |)}># */
-/*     #<{(|     } |)}># */
-/*     #<{(| } |)}># */
-/*     t->hits = hits; */
-/*  */
-/*     #<{(| clean up |)}># */
-/*     node_destroy(result); */
-/*     regression_clear_stack(s); */
-/*     free(func_input[0]); */
-/*     free(func_input[1]); */
-/*     free(func_input); */
-/*     return 0; */
-/*  */
-/* error: */
-/*     if (t->score) { */
-/*         free(t->score); */
-/*         t->score = NULL; */
-/*     } */
-/*     regression_clear_stack(s); */
-/*     free(func_input[0]); */
-/*     free(func_input[1]); */
-/*     free(func_input); */
-/*     return -1; */
-/* } */
-/*  */
+	/* Get line that isn't the header */
+	char line[1024] = {0};
+	size_t len_max = 1024;
+  while (fgets(line, len_max, infile) != NULL) {
+		if (line[0] != '#') {
+			break;
+		}
+  }
+
+	/* Parse line to obtain number of elements */
+  int nb_elements = 1;
+  int found_separator = 0;
+  for (size_t i = 0; i < len_max; i++) {
+    if (line[i] == ',') {
+      found_separator = 1;
+      nb_elements++;
+    }
+  }
+
+	/* Cleanup */
+	fclose(infile);
+
+  return (found_separator) ? nb_elements : -1;
+}
+
+char **csv_fields(const char *fp, int *nb_fields) {
+	/* Load file */
+  FILE *infile = fopen(fp, "r");
+  if (infile == NULL) {
+		fclose(infile);
+    return NULL;
+  }
+
+	/* Get last header line */
+	char field_line[1024] = {0};
+	char line[1024] = {0};
+	size_t len_max = 1024;
+  while (fgets(line, len_max, infile) != NULL) {
+		if (line[0] != '#') {
+			break;
+		} else {
+			strcpy(field_line, line);
+		}
+  }
+
+	/* Parse fields */
+	*nb_fields = csv_cols(fp);
+	char **fields = malloc(sizeof(char *) * *nb_fields);
+	int field_idx = 0;
+	char field_name[100] = {0};
+
+	for (int i = 0; i < strlen(field_line); i++) {
+		char c = field_line[i];
+
+		/* Ignore # and ' ' */
+		if (c == '#' || c == ' ') {
+			continue;
+		}
+
+		if (c == ',' || c == '\n') {
+			/* Add field name to fields */
+			fields[field_idx] = malloc(sizeof(char) * strlen(field_name) + 1);
+			strcpy(fields[field_idx], field_name);
+			memset(field_name, '\0', sizeof(char) * 100);
+			field_idx++;
+		} else {
+			/* Append field name */
+			field_name[strlen(field_name)] = c;
+		}
+	}
+
+	/* Cleanup */
+	fclose(infile);
+
+	return fields;
+}
+
+double **csv_data(const char *fp, int *nb_rows, int *nb_cols) {
+	/* Initialize memory for csv data */
+	*nb_rows = csv_rows(fp);
+	*nb_cols = csv_cols(fp);
+	double **data = malloc(sizeof(double *) * *nb_cols);
+	for (int i = 0; i < *nb_cols; i++) {
+		data[i] = malloc(sizeof(double) * *nb_rows);
+	}
+
+	/* Load file */
+  FILE *infile = fopen(fp, "r");
+  if (infile == NULL) {
+		fclose(infile);
+    return NULL;
+  }
+
+	/* Loop through data */
+	char line[1024] = {0};
+	size_t len_max = 1024;
+	int row_idx = 0;
+	int col_idx = 0;
+
+  while (fgets(line, len_max, infile) != NULL) {
+		if (line[0] == '#') {
+			continue;
+		}
+
+		char entry[100] = {0};
+		for (int i = 0; i < strlen(line); i++) {
+			char c = line[i];
+			if (c == ' ') {
+				continue;
+			}
+
+			if (c == ',' || c == '\n') {
+				data[col_idx][row_idx] = strtod(entry, NULL);
+				memset(entry, '\0', sizeof(char) * 100);
+				col_idx++;
+			} else {
+				entry[strlen(entry)] = c;
+			}
+		}
+
+		col_idx = 0;
+		row_idx++;
+  }
+
+	/* Cleanup */
+	fclose(infile);
+
+	return data;
+}
+
+struct dataset_t {
+	int nb_rows;
+	int nb_cols;
+
+	double **data;
+	char **fields;
+	char *predict;
+} typedef dataset_t;
+
+dataset_t *dataset_load(const char *fp, const char *predict) {
+	dataset_t *ds = malloc(sizeof(dataset_t));
+
+	/* Load data */
+	ds->data = csv_data(fp, &ds->nb_rows, &ds->nb_cols);
+	if (ds->data == NULL) {
+		FATAL("Failed to load dataset [%s]!", fp);
+	}
+
+	/* Load fields */
+	int nb_fields = 0;
+	ds->fields = csv_fields(fp, &nb_fields);
+	if (nb_fields != ds->nb_cols) {
+		FATAL("Malformed csv field line! Number of rows != number of fields!");
+	}
+
+	/* Set field to predict */
+	ds->predict = malloc(sizeof(char) * strlen(predict) + 1);
+	strcpy(ds->predict, predict);
+
+  return ds;
+}
+
+void dataset_delete(dataset_t *ds) {
+	/* Free data */
+	for (int i = 0; i < ds->nb_cols; i++) {
+		free(ds->data[i]);
+	}
+	free(ds->data);
+
+	/* Free fields */
+	for (int i = 0; i < ds->nb_cols; i++) {
+		free(ds->fields[i]);
+	}
+	free(ds->fields);
+
+	/* Free predict */
+	free(ds->predict);
+
+	/* Free dataset itself */
+	free(ds);
+	ds = NULL;
+}
+
+double *dataset_expected(const dataset_t *ds) {
+  int field_idx = 0;
+  int field_found = 0;
+	for (field_idx = 0; field_idx < ds->nb_cols; field_idx++) {
+    if (strcmp(ds->fields[field_idx], ds->predict) == 0) {
+      field_found = 1;
+      break;
+    }
+  }
+
+  if (field_found == 0) {
+    return NULL;
+  }
+
+  return ds->data[field_idx];
+}
+
+void evaluate_resolve_node(const node_t *node, const dataset_t *ds, double *arg) {
+  if (node->data_type == CONST) {
+		/* Load constant */
+		for (int i = 0; i < ds->nb_rows; i++) {
+			arg[i] = node->value;
+		}
+
+  } else if (node->data_type == INPUT) {
+		/* Find field */
+		int found_field = 0;
+		int field_idx = 0;
+		for (field_idx = 0; field_idx < ds->nb_cols; field_idx++) {
+			if (strcmp(ds->fields[field_idx], node->input_name) == 0) {
+				found_field = 1;
+				break;
+			}
+		}
+		if (found_field == 0) {
+			FATAL("Opps! Input [%s] not found in dataset!", node->input_name)
+		}
+
+		/* Load input data */
+		for (int i = 0; i < ds->nb_rows; i++) {
+			arg[i] = ds->data[field_idx][i];
+		}
+
+
+  } else if (node->data_type == EVAL) {
+		/* Load eval data */
+		for (int i = 0; i < ds->nb_rows; i++) {
+			/* arg[i] = node->eval_data; */
+		}
+
+  } else {
+    FATAL("Opps! shouldn't be here!")
+  }
+}
+
+#define UNARY_FUNC(FUNC) \
+  node_t *n_arg0 = stack_pop(&eval_stack); \
+  evaluate_resolve_node(n_arg0, ds, arg0); \
+  for (int i = 0; i < ds->nb_rows; i++) { \
+    eval->eval_data[i] = FUNC(arg0[i]); \
+  }
+
+#define BINARY_OP(OPERATOR) \
+  node_t *n_arg0 = stack_pop(&eval_stack); \
+  node_t *n_arg1 = stack_pop(&eval_stack); \
+  evaluate_resolve_node(n_arg0, ds, arg0); \
+  evaluate_resolve_node(n_arg1, ds, arg1); \
+  for (int i = 0; i < ds->nb_rows; i++) { \
+    eval->eval_data[i] = arg0[i] OPERATOR arg1[i]; \
+  }
+
+#define BINARY_FUNC(FUNC) \
+  node_t *n_arg0 = stack_pop(&eval_stack); \
+  node_t *n_arg1 = stack_pop(&eval_stack); \
+  evaluate_resolve_node(n_arg0, ds, arg0); \
+  evaluate_resolve_node(n_arg1, ds, arg1); \
+  for (int i = 0; i < ds->nb_rows; i++) { \
+    eval->eval_data[i] = FUNC(arg0[i], arg1[i]); \
+  }
+
+int evaluate_tree(tree_t *t, const dataset_t *ds) {
+  stack_t eq_stack;
+  stack_t eval_stack;
+  stack_setup(&eq_stack);
+  stack_setup(&eval_stack);
+  tree_stack(t, &eq_stack);
+
+	double *arg0 = malloc(sizeof(double) * ds->nb_rows);
+	double *arg1 = malloc(sizeof(double) * ds->nb_rows);
+	node_t *eval = node_new_eval(ds->nb_rows);
+
+  while (eq_stack.size != 0) {
+    node_t *n = stack_pop(&eq_stack);
+
+    if (n->type == FUNC_NODE) {
+			switch (n->function) {
+			case ADD: {BINARY_OP(+); break;}
+			case SUB: {BINARY_OP(-); break;}
+			case MUL: {BINARY_OP(*); break;}
+			case DIV: {BINARY_OP(/); break;}
+			case POW: {BINARY_FUNC(pow); break;}
+			case EXP: {UNARY_FUNC(exp); break;}
+			case LOG: {UNARY_FUNC(log); break;}
+			case SIN: {UNARY_FUNC(sin); break;}
+			case COS: {UNARY_FUNC(cos); break;}
+			}
+      stack_push(&eval_stack, eval);
+    } else {
+      stack_push(&eval_stack, n);
+    }
+  }
+
+  /* Calculate RMSE */
+  const double *predicted = eval->eval_data;
+  const double *expected = dataset_expected(ds);
+  const double n = ds->nb_rows;
+  double err_sq = 0.0;
+  for (int i = 0; i < n; i++) {
+    err_sq += pow(predicted[i] - expected[i], 2);
+  }
+  const double rmse = sqrt(err_sq / n);
+
+  /* Set error and score */
+  t->error = rmse;
+  t->score = rmse + (t->size) * 0.1;
+
+  /* Clean up */
+  free(arg0);
+  free(arg1);
+  node_delete(eval);
+
+  return 0;
+}
 
 
 #endif
