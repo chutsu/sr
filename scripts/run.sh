@@ -22,5 +22,5 @@ set -e
 # cd sr && node sr.js
 
 # python sr/sr.py TestCrossover.test_point_crossover
-python sr/sr.py TestRegression.test_eval_tree
-# python sr/sr.py TestRegression.test_regress
+# python sr/sr.py TestRegression.test_eval_tree
+python sr/sr.py TestRegression.test_regress

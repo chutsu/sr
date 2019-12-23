@@ -150,6 +150,7 @@ class Tree:
 
         self.error = 0.0
         self.score = 0.0
+        self.evaluated = 0
 
     @staticmethod
     def _build(method, tree, node, fs, ts, curr_depth, max_depth):
@@ -315,6 +316,9 @@ def point_mutation(fs, ts, tree):
     elif node.type == FUNC_NODE:
         node = _mutate_func_node(fs, node);
 
+    tree.update()
+    return tree
+
 
 ############################## CROSSOVER ####################################
 def point_crossover(t1, t2):
@@ -331,6 +335,8 @@ def point_crossover(t1, t2):
 
     t1.update()
     t2.update()
+
+    return [copy.deepcopy(t1), copy.deepcopy(t2)]
 
 
 ############################### SELECTION ####################################
@@ -380,14 +386,18 @@ class Population:
 
     def eval(self):
         for i in range(len(self.trees)):
-            eval_tree(self.trees[i], self.dataset)
+            self.trees[i] = eval_tree(self.trees[i], self.dataset)
 
     def best(self):
-        best_tree = self.trees[0]
+        best_score = self.trees[0].score
+        best_idx = 0
+
         for i in range(len(self.trees)):
-            if self.trees[i].score < best_tree.score:
-                best_tree = self.trees[i]
-        return best_tree
+            if self.trees[i].score < best_score:
+                best_score = self.trees[i].score
+                best_idx = i
+
+        return self.trees[best_idx]
 
     def __str__(self):
         s = ""
@@ -411,14 +421,14 @@ class Config:
 
         # Evolve settings
         self.pop_size = kwargs.get("pop_size", 1000)
-        self.max_iter = kwargs.get("max_iter", 500)
+        self.max_iter = kwargs.get("max_iter", 100)
         self.prob_crossover = kwargs.get("prob_crossover", 0.5)
         self.prob_mutate = kwargs.get("prob_mutate", 0.2)
 
 
 def _eval_resolve_node(node, dataset):
     if node.data_type == CONST:
-        return [i for i in range(dataset["size"])]
+        return [node.data for i in range(dataset["size"])]
     elif node.data_type == INPUT:
         return dataset["inputs"][node.data]
     elif node.data_type == EVAL:
@@ -438,8 +448,6 @@ def eval_tree(tree, dataset):
             if node.type == FUNC_NODE:
                 args = [eval_stack.pop() for i in range(node.arity)]
                 result = []
-                arg0 = []
-                arg1 = []
 
                 if node.func == ADD:
                     arg0 = _eval_resolve_node(args[0], dataset)
@@ -494,13 +502,7 @@ def eval_tree(tree, dataset):
         for i in range(n):
             err_sq += math.pow(predicted[i] - response[i], 2)
         rmse = math.sqrt(err_sq / n)
-
-        if (rmse == 0.0):
-            print("predicted: %f" % predicted[0])
-            print("response: %f" % response[0])
-            print("error: %f" % (predicted[i] - response[i]))
-            print(tree)
-            exit(0)
+        tree.evaluated = len(predicted)
 
         # Set error and score
         tree.error = rmse
@@ -510,9 +512,9 @@ def eval_tree(tree, dataset):
         # Set error and score
         tree.error = float("inf")
         tree.score = float("inf")
-        return False
+        return copy.deepcopy(tree)
 
-    return True
+    return copy.deepcopy(tree)
 
 
 def regress(config):
@@ -523,26 +525,29 @@ def regress(config):
                      config.pop_size)
 
     for i in range(config.max_iter):
+        # Crossover
+        for idx in range(0, len(pop.trees), 2):
+            if random.uniform(0.0, 1.0) > config.prob_crossover:
+                t1, t2 = point_crossover(pop.trees[idx], pop.trees[idx + 1]);
+                pop.trees[idx] = t1
+                pop.trees[idx + 1] = t2
+
+        # Mutate
+        for j in range(len(pop.trees)):
+            if random.uniform(0.0, 1.0) > config.prob_mutate:
+                t = point_mutation(fs, ts, pop.trees[j])
+                pop.trees[j] = t
+
         # Evaluate and select
         pop.eval()
         t_size = int(len(pop.trees) * 0.05)
         pop.trees = tournament_selection(pop.trees, t_size)
 
-        # Crossover
-        for idx in range(0, len(pop.trees), 2):
-            if random.uniform(0.0, 1.0) > config.prob_crossover:
-                point_crossover(pop.trees[idx], pop.trees[idx + 1]);
-
-        # Mutate
-        for t in pop.trees:
-            if random.uniform(0.0, 1.0) > config.prob_mutate:
-                point_mutation(fs, ts, t)
-
         best_tree = pop.best();
-
         status = ""
         status += "iter: %d " % (i)
         status += best_tree.eq_str() + " "
+        status += "size: " + str(best_tree.size) + " "
         status += "score: " + str(best_tree.score) + " "
         status += "error: " + str(best_tree.error) + " "
         print(status)
@@ -616,9 +621,6 @@ class TestCrossover(unittest.TestCase):
         t2_old = copy.deepcopy(t2)
         point_crossover(t1, t2)
 
-        print(t1)
-        print("-" * 78)
-        print(t2)
         point_mutation(fs, ts, t1)
         point_mutation(fs, ts, t2)
 
@@ -705,13 +707,31 @@ class TestPopulation(unittest.TestCase):
 class TestRegression(unittest.TestCase):
     def test_eval_tree(self):
         t_start = time.time()
+
+        x_data = range(10)
+        y_data = [x + 1.0 for x in x_data]
         dataset = {
-            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "inputs": {"x": x_data},
+            "response": y_data,
             "size": 10
         }
 
-        tree = Tree.generate("FULL", fs, ts, 2)
+        add = Node.setup_func(ADD, 2)
+        sub = Node.setup_func(SUB, 2)
+
+        x = Node.setup_input("x")
+        one = Node.setup_const(1.0)
+        two = Node.setup_const(2.0)
+
+        add.children[0] = x
+        add.children[1] = sub
+        sub.children[0] = one
+        sub.children[1] = two
+
+        tree = Tree()
+        tree.root = add
+        tree.update()
+
         eval_tree(tree, dataset)
         t_end = time.time()
         print(tree)
@@ -724,16 +744,11 @@ class TestRegression(unittest.TestCase):
     def test_regress(self):
         x_data = range(10)
         y_data = [math.pow(x, 2) + 10.0 for x in x_data]
-
         dataset = {
             "inputs": {"x": x_data},
             "response": y_data,
             "size": 10
         }
-
-        import pprint
-        pprint.pprint(dataset)
-
         config = Config(dataset, fs, ts)
         regress(config)
 
