@@ -349,12 +349,6 @@ char *node_string(const node_t *n) {
   char buf[100] = {0};
 
   switch (n->type) {
-  case TERM_NODE:
-    switch (n->data_type) {
-    case INPUT: strcpy(buf, n->input_name); break;
-    case CONST: snprintf(buf, 100, "%.4e", n->value); break;
-    }
-    break;
   case FUNC_NODE:
     switch (n->function) {
     case ADD: strcpy(buf, "ADD"); break;
@@ -367,6 +361,13 @@ char *node_string(const node_t *n) {
     case SIN: strcpy(buf, "SIN"); break;
     case COS: strcpy(buf, "COS"); break;
     }
+    break;
+  case TERM_NODE:
+    switch (n->data_type) {
+    case INPUT: strcpy(buf, n->input_name); break;
+    case CONST: snprintf(buf, 100, "%.4e", n->value); break;
+    }
+    break;
   }
 
   return malloc_string(buf);
@@ -477,24 +478,35 @@ tree_t *tree_copy(const tree_t *src) {
   return t;
 }
 
-/* static void tree_string_traverse(const node_t *n, char *buf, size_t buf_len) { */
-/*   #<{(| if (n->type == TERM_NODE) { |)}># */
-/*   #<{(|   buf[buf_len + 1] = ' '; |)}># */
-/*   #<{(|   return; |)}># */
-/*   #<{(| } |)}># */
-/*  */
-/*   #<{(| buf[buf_len + 1] = ' '; |)}># */
-/*   #<{(| node_print(n); |)}># */
-/*   #<{(| for (int i = 0; i < n->arity; i++) { |)}># */
-/*   #<{(|   tree_string_traverse(n->children[i], buf, strlen(buf_len)); |)}># */
-/*   #<{(| } |)}># */
-/* } */
-/*  */
-/* char *tree_string(const tree_t *t) { */
-/*   char buf[9046]; */
-/*   #<{(| tree_string_traverse(t->root, buf); |)}># */
-/*  */
-/* } */
+static void tree_string_traverse(const node_t *n, char *buf, size_t buf_len) {
+  if (n->type == TERM_NODE) {
+    char *s = node_string(n);
+    sprintf(buf + buf_len, "%s ", s);
+    free(s);
+    return;
+  }
+
+  char *s = node_string(n);
+  sprintf(buf + buf_len, "%s ", s);
+  free(s);
+
+  for (int i = 0; i < n->arity; i++) {
+    tree_string_traverse(n->children[i], buf, strlen(buf));
+  }
+}
+
+char *tree_string(const tree_t *t) {
+  /* Traverse tree to build string */
+  char buf[9046] = {0};
+  tree_string_traverse(t->root, buf, 0);
+
+  /* Remove trailing white space */
+  if (buf[strlen(buf) - 1] == ' ') {
+    buf[strlen(buf) - 1] = '\0';
+  }
+
+  return malloc_string(buf);
+}
 
 static void tree_print_traverse(const node_t *n) {
   if (n->type == TERM_NODE) {

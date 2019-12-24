@@ -349,6 +349,44 @@ int test_tree_copy() {
   return 0;
 }
 
+int test_tree_string() {
+  /* Setup */
+  tree_t *t = tree_new();
+
+  /* Root */
+  node_t *root = node_new_func(ADD, 2);
+  t->root = root;
+
+  /* Depth 1 - Left */
+  node_t *sub = node_new_func(SUB, 2);
+  node_t *k1 = node_new_const(1.0);
+  node_t *k2 = node_new_const(2.0);
+
+  root->children[0] = sub;
+  sub->children[0] = k1;
+  sub->children[1] = k2;
+
+  /* Depth 1 - Right */
+  node_t *mul = node_new_func(MUL, 2);
+  node_t *k3 = node_new_const(3.0);
+  node_t *k4 = node_new_const(4.0);
+
+  root->children[1] = mul;
+  mul->children[0] = k3;
+  mul->children[1] = k4;
+
+  tree_print(t);
+  tree_update(t);
+
+  char *s = tree_string(t);
+  printf("[%s]\n", s);
+  free(s);
+
+  tree_delete(t);
+
+  return 0;
+}
+
 int test_tree_generate() {
   /* Setup function set */
   function_set_t fs;
@@ -1069,6 +1107,7 @@ void test_suite() {
   /* TREE */
   MU_ADD_TEST(test_tree_new_and_delete);
   MU_ADD_TEST(test_tree_copy);
+  MU_ADD_TEST(test_tree_string);
   MU_ADD_TEST(test_tree_generate);
   MU_ADD_TEST(test_tree_update);
   MU_ADD_TEST(test_tree_get_node);

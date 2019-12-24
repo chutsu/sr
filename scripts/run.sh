@@ -12,7 +12,7 @@ make
 # ./build/tests/test_sr --target test_stack_pop
 # ./build/tests/test_sr --target test_node_new_and_delete
 # ./build/tests/test_sr --target test_node_copy
-./build/tests/test_sr --target test_node_string
+# ./build/tests/test_sr --target test_node_string
 # ./build/tests/test_sr --target test_node_new_func
 # ./build/tests/test_sr --target test_node_new_input
 # ./build/tests/test_sr --target test_node_new_const
@@ -20,6 +20,7 @@ make
 # ./build/tests/test_sr --target test_random_term
 # ./build/tests/test_sr --target test_tree_new_and_delete
 # ./build/tests/test_sr --target test_tree_copy
+# ./build/tests/test_sr --target test_tree_string
 # ./build/tests/test_sr --target test_tree_generate
 # ./build/tests/test_sr --target test_tree_update
 # ./build/tests/test_sr --target test_tree_get_node
