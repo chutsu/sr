@@ -108,15 +108,95 @@ int test_node_copy() {
   node_t *src = mul;
   node_t *des = node_copy(src);
 
+  node_delete(src);
+  free(t1);
+
   tree_t *t2 = tree_new();
   t2->root = des;
   tree_update(t2);
   tree_print(t2);
-
-  node_delete(src);
   node_delete(des);
-  free(t1);
   free(t2);
+
+  return 0;
+}
+
+int test_node_string() {
+  node_t n;
+  char *s;
+
+  /* TERM NODE */
+  /* -- INPUT NODE */
+  n.type = TERM_NODE;
+  n.data_type = INPUT;
+  n.input_name = malloc_string("x");
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "x") == 0);
+  free(n.input_name);
+  free(s);
+  /* -- CONST NODE */
+  n.type = TERM_NODE;
+  n.data_type = CONST;
+  n.value = -1.0000;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "-1.0000e+00") == 0);
+  free(s);
+
+  /* FUNC NODE */
+  /* -- ADD */
+  n.type = FUNC_NODE;
+  n.function = ADD;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "ADD") == 0);
+  free(s);
+  /* -- SUB */
+  n.type = FUNC_NODE;
+  n.function = SUB;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "SUB") == 0);
+  free(s);
+  /* -- MUL */
+  n.type = FUNC_NODE;
+  n.function = MUL;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "MUL") == 0);
+  free(s);
+  /* -- DIV */
+  n.type = FUNC_NODE;
+  n.function = DIV;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "DIV") == 0);
+  free(s);
+  /* -- POW */
+  n.type = FUNC_NODE;
+  n.function = POW;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "POW") == 0);
+  free(s);
+  /* -- EXP */
+  n.type = FUNC_NODE;
+  n.function = EXP;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "EXP") == 0);
+  free(s);
+  /* -- LOG */
+  n.type = FUNC_NODE;
+  n.function = LOG;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "LOG") == 0);
+  free(s);
+  /* -- SIN */
+  n.type = FUNC_NODE;
+  n.function = SIN;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "SIN") == 0);
+  free(s);
+  /* -- COS */
+  n.type = FUNC_NODE;
+  n.function = COS;
+  s = node_string(&n);
+  MU_CHECK(strcmp(s, "COS") == 0);
+  free(s);
 
   return 0;
 }
@@ -234,7 +314,7 @@ int test_tree_copy() {
   fs.arity = (int[7]) {ADD_ARITY, SUB_ARITY, MUL_ARITY, DIV_ARITY,
                        POW_ARITY, EXP_ARITY, LOG_ARITY};
   fs.length = 7;
-  function_set_print(&fs);
+  /* function_set_print(&fs); */
 
   /* Setup terminal set */
   terminal_set_t ts;
@@ -254,7 +334,7 @@ int test_tree_copy() {
     {.type = RCONST, .range = {-1.0, 1.0}},
   };
   ts.length = 13;
-  terminal_set_print(&ts);
+  /* terminal_set_print(&ts); */
 
   /* Generate tree */
   tree_t *t1 = tree_generate(FULL, &fs, &ts, 2);
@@ -693,7 +773,7 @@ int test_tournament_selection() {
   terminal_set_print(&ts);
 
   /* Generate trees */
-  tree_t *trees[10];
+  tree_t **trees = malloc(sizeof(tree_t *) * 10);
   for (int i = 0; i < 10; i++) {
     trees[i] = tree_generate(FULL, &fs, &ts, 2);
     trees[i]->score = i;
@@ -702,18 +782,17 @@ int test_tournament_selection() {
   /* printf("---\n"); */
 
   /* Perform selection */
-  tree_t **new_trees = tournament_selection(trees, 10, 10000);
+  trees = tournament_selection(trees, 10, 10000);
   for (int i = 0; i < 10; i++) {
-    /* printf("score: %f\n", new_trees[i]->score); */
-    MU_CHECK(fltcmp(new_trees[i]->score, 0.0) == 0);
+    /* printf("score: %f\n", trees[i]->score); */
+    MU_CHECK(fltcmp(trees[i]->score, 0.0) == 0);
   }
 
   /* Delete trees */
   for (int i = 0; i < 10; i++) {
     tree_delete(trees[i]);
-    tree_delete(new_trees[i]);
   }
-  free(new_trees);
+  free(trees);
 
   return 0;
 }
@@ -838,7 +917,7 @@ int test_evaluate_tree() {
   return 0;
 }
 
-int test_regress() {
+int test_best_tree() {
   /* Setup function set */
   function_set_t fs;
   fs.funcs = (int[7]) {ADD, SUB, MUL, DIV, POW, EXP, LOG};
@@ -866,14 +945,100 @@ int test_regress() {
   ts.length = 12;
   terminal_set_print(&ts);
 
-  /* Load dataset and generate a tree */
+  /* Setup trees */
+  tree_t **trees = malloc(sizeof(tree_t) * 10);
+  for (int i = 0; i < 10; i++) {
+    trees[i] = tree_generate(FULL, &fs, &ts, 2);
+    trees[i]->score = i;
+  }
+
+  /* Find best */
+  tree_t *best = best_tree(trees, 10);
+  MU_CHECK(fltcmp(best->score, 0.0) == 0);
+
+  /* Clean up */
+  for (int i = 0; i < 10; i++) {
+    tree_delete(trees[i]);
+  }
+  free(trees);
+
+  return 0;
+}
+
+int test_regress() {
+  /* Setup function set */
+  function_set_t fs;
+  fs.funcs = (int[4]) {ADD, SUB, MUL, DIV};
+  fs.arity = (int[4]) {ADD_ARITY, SUB_ARITY, MUL_ARITY,
+                       DIV_ARITY};
+  fs.length = 4;
+  function_set_print(&fs);
+
+  /* Setup terminal set */
+  terminal_set_t ts;
+  ts.terms = (terminal_t[12]) {
+    {.type = CONST, .val = 0.0},
+    {.type = CONST, .val = 1.0},
+    {.type = CONST, .val = 2.0},
+    {.type = CONST, .val = 3.0},
+    {.type = CONST, .val = 4.0},
+    {.type = CONST, .val = 5.0},
+    {.type = CONST, .val = 6.0},
+    {.type = CONST, .val = 7.0},
+    {.type = CONST, .val = 8.0},
+    {.type = CONST, .val = 9.0},
+    {.type = INPUT, .str = "x"},
+    {.type = RCONST, .range = {-1.0, 1.0}},
+  };
+  ts.length = 12;
+  terminal_set_print(&ts);
+
+  /* Load dataset and generate trees */
 	dataset_t *ds = dataset_load(CSV_TEST_DATA, "y");
-  tree_t *t = tree_generate(FULL, &fs, &ts, 2);
-  evaluate_tree(t, ds);
-  tree_print(t);
+	int nb_trees = 1000;
+	tree_t **trees = malloc(sizeof(tree_t *) * nb_trees);
+	for (int i = 0; i < nb_trees; i++) {
+    trees[i] = tree_generate(FULL, &fs, &ts, 2);
+	}
+
+  int max_iter = 100;
+  int iter = 0;
+	while (iter != max_iter) {
+	  /* #<{(| Crossover |)}># */
+	  /* for (int i = 0; i < nb_trees; i+=2) { */
+	  /*   if (randf(0.0, 1.0) < 0.5) { */
+    /*     point_crossover(trees[i], trees[i + 1]); */
+    /*   } */
+    /* } */
+
+    /* Mutate */
+	  for (int i = 0; i < nb_trees; i+=2) {
+	    if (randf(0.0, 1.0) < 0.2) {
+        point_mutation(&fs, &ts, trees[i]);
+        /* subtree_mutation(&fs, &ts, trees[i]); */
+      }
+    }
+
+    /* #<{(| Evaluate |)}># */
+	  /* for (int i = 0; i < nb_trees; i++) { */
+    /*   evaluate_tree(trees[i], ds); */
+	  /* } */
+
+    /* Selection */
+    trees = tournament_selection(trees, nb_trees, 10);
+
+	  /* Show the best */
+	  tree_t *best = best_tree(trees, nb_trees);
+	  printf("iter[%d] score: %f\t error:%f\n", iter, best->score, best->error);
+
+	  iter++;
+	}
 
 	/* Clean up */
-	tree_delete(t);
+	for (int i = 0; i < nb_trees; i++) {
+    tree_delete(trees[i]);
+  }
+  free(trees);
 	dataset_delete(ds);
 
   return 0;
@@ -894,6 +1059,7 @@ void test_suite() {
   /* NODE */
   MU_ADD_TEST(test_node_new_and_delete);
   MU_ADD_TEST(test_node_copy);
+  MU_ADD_TEST(test_node_string);
   MU_ADD_TEST(test_node_new_func);
   MU_ADD_TEST(test_node_new_input);
   MU_ADD_TEST(test_node_new_const);
@@ -926,6 +1092,7 @@ void test_suite() {
   MU_ADD_TEST(test_csv_data);
   MU_ADD_TEST(test_dataset_load_and_delete);
   MU_ADD_TEST(test_evaluate_tree);
+  MU_ADD_TEST(test_best_tree);
   MU_ADD_TEST(test_regress);
 }
 

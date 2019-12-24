@@ -5,16 +5,60 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
-#include "sr/utils.h"
+#include <math.h>
+#include <time.h>
 
 /* PARAMETERS */
 #define MAX_ARITY 10
 #define MAX_TREE_SIZE 500
 
 /******************************************************************************
+ *                                  UTIL
+ ******************************************************************************/
+
+/* LOG */
+#define LOG_ERROR(M, ...)                                                      \
+  fprintf(stderr, "[ERROR] [%s] " M "\n", __func__, ##__VA_ARGS__)
+#define LOG_WARN(M, ...) fprintf(stderr, "[WARN] " M "\n", ##__VA_ARGS__)
+#define LOG_INFO(M, ...) fprintf(stderr, "[INFO] " M "\n", ##__VA_ARGS__)
+
+/* FATAL */
+#define FATAL(M, ...) \
+  fprintf(stderr, "[FATAL] " M "\n", ##__VA_ARGS__); \
+  exit(-1);
+
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
+int randi(int ub, int lb) { return rand() % lb + ub; }
+
+float randf(float a, float b) {
+  float random = ((float) rand()) / (float) RAND_MAX;
+  float diff = b - a;
+  float r = random * diff;
+  return a + r;
+}
+
+int fltcmp(const double f1, const double f2) {
+  if (fabs(f1 - f2) <= 0.0001) {
+    return 0;
+  } else if (f1 > f2) {
+    return 1;
+  }
+
+  return -1;
+}
+
+char *malloc_string(const char *s) {
+  char *retval = malloc(sizeof(char) * strlen(s) + 1);
+  strcpy(retval, s);
+  return retval;
+}
+
+/******************************************************************************
  *                                  STACK
  ******************************************************************************/
+
 struct stack_t {
   void *data[MAX_TREE_SIZE];
   size_t size;
@@ -245,9 +289,11 @@ static void node_copy_traverse(const node_t *src, node_t *des) {
   /* Function node specific */
   des->function = src->function;
   des->arity = src->arity;
-  for (int i = 0; i < des->arity; i++) {
-    des->children[i] = node_new();
-    node_copy_traverse(src->children[i], des->children[i]);
+  if (des->arity != -1) {
+    for (int i = 0; i < des->arity; i++) {
+      des->children[i] = node_new();
+      node_copy_traverse(src->children[i], des->children[i]);
+    }
   }
 }
 
@@ -297,6 +343,33 @@ void node_print(const node_t *n) {
     printf("Opps! Invalid node type [%d]!\n", n->type);
     break;
   }
+}
+
+char *node_string(const node_t *n) {
+  char buf[100] = {0};
+
+  switch (n->type) {
+  case TERM_NODE:
+    switch (n->data_type) {
+    case INPUT: strcpy(buf, n->input_name); break;
+    case CONST: snprintf(buf, 100, "%.4e", n->value); break;
+    }
+    break;
+  case FUNC_NODE:
+    switch (n->function) {
+    case ADD: strcpy(buf, "ADD"); break;
+    case SUB: strcpy(buf, "SUB"); break;
+    case MUL: strcpy(buf, "MUL"); break;
+    case DIV: strcpy(buf, "DIV"); break;
+    case POW: strcpy(buf, "POW"); break;
+    case EXP: strcpy(buf, "EXP"); break;
+    case LOG: strcpy(buf, "LOG"); break;
+    case SIN: strcpy(buf, "SIN"); break;
+    case COS: strcpy(buf, "COS"); break;
+    }
+  }
+
+  return malloc_string(buf);
 }
 
 node_t *node_new_func(const int function, const int arity) {
@@ -403,6 +476,25 @@ tree_t *tree_copy(const tree_t *src) {
 
   return t;
 }
+
+/* static void tree_string_traverse(const node_t *n, char *buf, size_t buf_len) { */
+/*   #<{(| if (n->type == TERM_NODE) { |)}># */
+/*   #<{(|   buf[buf_len + 1] = ' '; |)}># */
+/*   #<{(|   return; |)}># */
+/*   #<{(| } |)}># */
+/*  */
+/*   #<{(| buf[buf_len + 1] = ' '; |)}># */
+/*   #<{(| node_print(n); |)}># */
+/*   #<{(| for (int i = 0; i < n->arity; i++) { |)}># */
+/*   #<{(|   tree_string_traverse(n->children[i], buf, strlen(buf_len)); |)}># */
+/*   #<{(| } |)}># */
+/* } */
+/*  */
+/* char *tree_string(const tree_t *t) { */
+/*   char buf[9046]; */
+/*   #<{(| tree_string_traverse(t->root, buf); |)}># */
+/*  */
+/* } */
 
 static void tree_print_traverse(const node_t *n) {
   if (n->type == TERM_NODE) {
@@ -670,6 +762,26 @@ void point_mutation(const function_set_t *fs,
   } else if (n->type == FUNC_NODE) {
     mutate_func_node(fs, n);
   }
+
+	tree_update(t);
+}
+
+void subtree_mutation(const function_set_t *fs,
+                      const terminal_set_t *ts,
+                      tree_t *t) {
+  const int index = randi(1, t->size - 1);
+  node_t *subtree = tree_get_node(t, index);
+
+  tree_t *new_subtree = tree_generate(FULL, fs, ts, 2);
+  node_t *parent = subtree->parent;
+  const int nth_child = subtree->nth_child;
+  if (parent == NULL) {
+    printf("Parent is NULL!\n");
+  }
+  parent->children[nth_child] = new_subtree->root;
+
+  free(new_subtree);
+  node_delete(subtree);
 }
 
 /******************************************************************************
@@ -682,16 +794,24 @@ void point_crossover(tree_t *t1, tree_t *t2) {
 
   node_t *t1_subtree = tree_get_node(t1, t1_pt);
   node_t *t2_subtree = tree_get_node(t2, t2_pt);
-  const int t1_nth_child = t1_subtree->nth_child;
-  const int t2_nth_child = t2_subtree->nth_child;
+
   node_t *t1_parent = t1_subtree->parent;
   node_t *t2_parent = t2_subtree->parent;
-
-  t1_parent->children[t1_nth_child] = t2_subtree;
-  t2_parent->children[t2_nth_child] = t1_subtree;
+  const int t1_nth_child = t1_subtree->nth_child;
+  const int t2_nth_child = t2_subtree->nth_child;
 
   t1_subtree->parent = t2_parent;
   t2_subtree->parent = t1_parent;
+  t1_subtree->nth_child = t2_nth_child;
+  t2_subtree->nth_child = t1_nth_child;
+  t1_parent->children[t1_nth_child] = t2_subtree;
+  t2_parent->children[t2_nth_child] = t1_subtree;
+
+  /* t1_parent->children[t1_nth_child] = t2_subtree; */
+  /* t2_parent->children[t2_nth_child] = t1_subtree; */
+
+  /* t1_parent->children[t1_nth_child] = t2_subtree; */
+  /* t2_parent->children[t2_nth_child] = t1_subtree; */
 
 	tree_update(t1);
 	tree_update(t2);
@@ -719,6 +839,11 @@ tree_t **tournament_selection(tree_t **trees,
 
     new_trees[i] = tree_copy(best);
   }
+
+  for (int i = 0; i < nb_trees; i++) {
+    tree_delete(trees[i]);
+  }
+  free(trees);
 
   return new_trees;
 }
@@ -1042,7 +1167,6 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
 			case SUB: {BINARY_OP(-); break;}
 			case MUL: {BINARY_OP(*); break;}
 			case DIV: {BINARY_OP(/); break;}
-			case POW: {BINARY_FUNC(pow); break;}
 			case EXP: {UNARY_FUNC(exp); break;}
 			case LOG: {UNARY_FUNC(log); break;}
 			case SIN: {UNARY_FUNC(sin); break;}
@@ -1074,6 +1198,17 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
   node_delete(eval);
 
   return 0;
+}
+
+tree_t *best_tree(tree_t **trees, size_t nb_trees) {
+  tree_t *best = trees[0];
+  for (int i = 0; i < nb_trees; i++) {
+    if (trees[i]->score <= best->score) {
+      best = trees[i];
+    }
+  }
+
+  return best;
 }
 
 
