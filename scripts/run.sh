@@ -28,6 +28,7 @@ make
 # ./build/tests/test_sr --target test_tree_stack
 # ./build/tests/test_sr --target test_subtree_size
 # ./build/tests/test_sr --target test_point_mutation
+# ./build/tests/test_sr --target test_subtree_mutation
 # ./build/tests/test_sr --target test_point_crossover
 # ./build/tests/test_sr --target test_tournament_selection
 # ./build/tests/test_sr --target test_csv_rows

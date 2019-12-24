@@ -379,7 +379,7 @@ int test_tree_string() {
   tree_update(t);
 
   char *s = tree_string(t);
-  printf("[%s]\n", s);
+  printf("%s\n", s);
   free(s);
 
   tree_delete(t);
@@ -725,18 +725,13 @@ int test_point_mutation() {
   return 0;
 }
 
-/******************************************************************************
- *                             CROSSOVER OPERATORS
- ******************************************************************************/
-
-int test_point_crossover() {
+int test_subtree_mutation() {
   /* Setup function set */
   function_set_t fs;
   fs.funcs = (int[7]) {ADD, SUB, MUL, DIV, POW, EXP, LOG};
   fs.arity = (int[7]) {ADD_ARITY, SUB_ARITY, MUL_ARITY, DIV_ARITY,
                        POW_ARITY, EXP_ARITY, LOG_ARITY};
   fs.length = 7;
-  function_set_print(&fs);
 
   /* Setup terminal set */
   terminal_set_t ts;
@@ -756,19 +751,90 @@ int test_point_crossover() {
     {.type = RCONST, .range = {-1.0, 1.0}},
   };
   ts.length = 13;
-  terminal_set_print(&ts);
+
+  /* Test subtree mutation */
+  for (int i = 0; i < 100; i++) {
+    /* Generate tree */
+    tree_t *t = tree_generate(GROW, &fs, &ts, 2);
+
+    char *t_before = tree_string(t);
+    printf("BEFORE: %s\n", t_before);
+
+    subtree_mutation(&fs, &ts, t);
+
+    char *t_after = tree_string(t);
+    printf("AFTER:  %s\n", t_after);
+
+    MU_CHECK(strcmp(t_before, t_after) != 0);
+
+    /* Clean up */
+    free(t_before);
+    free(t_after);
+    tree_delete(t);
+  }
+
+  return 0;
+}
+
+/******************************************************************************
+ *                             CROSSOVER OPERATORS
+ ******************************************************************************/
+
+int test_point_crossover() {
+  /* Setup function set */
+  function_set_t fs;
+  fs.funcs = (int[7]) {ADD, SUB, MUL, DIV, POW, EXP, LOG};
+  fs.arity = (int[7]) {ADD_ARITY, SUB_ARITY, MUL_ARITY, DIV_ARITY,
+                       POW_ARITY, EXP_ARITY, LOG_ARITY};
+  fs.length = 7;
+  /* function_set_print(&fs); */
+
+  /* Setup terminal set */
+  terminal_set_t ts;
+  ts.terms = (terminal_t[13]) {
+    {.type = CONST, .val = 0.0},
+    {.type = CONST, .val = 1.0},
+    {.type = CONST, .val = 2.0},
+    {.type = CONST, .val = 3.0},
+    {.type = CONST, .val = 4.0},
+    {.type = CONST, .val = 5.0},
+    {.type = CONST, .val = 6.0},
+    {.type = CONST, .val = 7.0},
+    {.type = CONST, .val = 8.0},
+    {.type = CONST, .val = 9.0},
+    {.type = INPUT, .str = "x"},
+    {.type = INPUT, .str = "y"},
+    {.type = RCONST, .range = {-1.0, 1.0}},
+  };
+  ts.length = 13;
+  /* terminal_set_print(&ts); */
 
   /* Generate tree */
-  tree_t *t1 = tree_generate(FULL, &fs, &ts, 2);
-  tree_t *t2 = tree_generate(FULL, &fs, &ts, 2);
-  printf("tree1:\n"); tree_print(t1); printf("\n");
-  printf("tree2:\n"); tree_print(t2);
+  tree_t *t1 = tree_generate(FULL, &fs, &ts, 3);
+  tree_t *t2 = tree_generate(FULL, &fs, &ts, 3);
+  char *t1_str = NULL;
+  char *t2_str = NULL;
 
+  /* Before */
+  t1_str = tree_string(t1);
+  t2_str = tree_string(t2);
+  printf("tree1: %s\n", t1_str);
+  printf("tree2: %s\n", t2_str);
   printf("\n");
+  free(t1_str);
+  free(t2_str);
+
+  /* Point crossover */
   point_crossover(t1, t2);
 
-  printf("tree1:\n"); tree_print(t1); printf("\n");
-  printf("tree2:\n"); tree_print(t2);
+  /* After */
+  t1_str = tree_string(t1);
+  t2_str = tree_string(t2);
+  printf("tree1: %s\n", t1_str);
+  printf("tree2: %s\n", t2_str);
+  printf("\n");
+  free(t1_str);
+  free(t2_str);
 
   /* clean up */
   tree_delete(t1);
@@ -788,7 +854,6 @@ int test_tournament_selection() {
   fs.arity = (int[7]) {ADD_ARITY, SUB_ARITY, MUL_ARITY, DIV_ARITY,
                        POW_ARITY, EXP_ARITY, LOG_ARITY};
   fs.length = 7;
-  function_set_print(&fs);
 
   /* Setup terminal set */
   terminal_set_t ts;
@@ -808,21 +873,20 @@ int test_tournament_selection() {
     {.type = RCONST, .range = {-1.0, 1.0}},
   };
   ts.length = 13;
-  terminal_set_print(&ts);
 
   /* Generate trees */
   tree_t **trees = malloc(sizeof(tree_t *) * 10);
   for (int i = 0; i < 10; i++) {
     trees[i] = tree_generate(FULL, &fs, &ts, 2);
     trees[i]->score = i;
-    /* printf("score: %f\n", trees[i]->score); */
+    printf("score: %f\n", trees[i]->score);
   }
-  /* printf("---\n"); */
+  printf("---\n");
 
   /* Perform selection */
   trees = tournament_selection(trees, 10, 10000);
   for (int i = 0; i < 10; i++) {
-    /* printf("score: %f\n", trees[i]->score); */
+    printf("score: %f\n", trees[i]->score);
     MU_CHECK(fltcmp(trees[i]->score, 0.0) == 0);
   }
 
@@ -1010,7 +1074,6 @@ int test_regress() {
   fs.arity = (int[4]) {ADD_ARITY, SUB_ARITY, MUL_ARITY,
                        DIV_ARITY};
   fs.length = 4;
-  function_set_print(&fs);
 
   /* Setup terminal set */
   terminal_set_t ts;
@@ -1029,45 +1092,52 @@ int test_regress() {
     {.type = RCONST, .range = {-1.0, 1.0}},
   };
   ts.length = 12;
-  terminal_set_print(&ts);
 
   /* Load dataset and generate trees */
 	dataset_t *ds = dataset_load(CSV_TEST_DATA, "y");
 	int nb_trees = 1000;
 	tree_t **trees = malloc(sizeof(tree_t *) * nb_trees);
 	for (int i = 0; i < nb_trees; i++) {
-    trees[i] = tree_generate(FULL, &fs, &ts, 2);
+    trees[i] = tree_generate(FULL, &fs, &ts, 3);
 	}
 
-  int max_iter = 100;
+  int max_iter = 1000;
   int iter = 0;
 	while (iter != max_iter) {
-	  /* #<{(| Crossover |)}># */
-	  /* for (int i = 0; i < nb_trees; i+=2) { */
-	  /*   if (randf(0.0, 1.0) < 0.5) { */
-    /*     point_crossover(trees[i], trees[i + 1]); */
-    /*   } */
-    /* } */
-
-    /* Mutate */
+	  /* Crossover */
 	  for (int i = 0; i < nb_trees; i+=2) {
-	    if (randf(0.0, 1.0) < 0.2) {
-        point_mutation(&fs, &ts, trees[i]);
-        /* subtree_mutation(&fs, &ts, trees[i]); */
+	    if (randf(0.0, 1.0) < 0.8) {
+        point_crossover(trees[i], trees[i + 1]);
       }
     }
 
-    /* #<{(| Evaluate |)}># */
-	  /* for (int i = 0; i < nb_trees; i++) { */
-    /*   evaluate_tree(trees[i], ds); */
-	  /* } */
+    /* Mutate */
+	  for (int i = 0; i < nb_trees; i++) {
+	    if (randf(0.0, 1.0) < 0.1) {
+        /* point_mutation(&fs, &ts, trees[i]); */
+        subtree_mutation(&fs, &ts, trees[i]);
+      }
+    }
+
+    /* Evaluate */
+	  for (int i = 0; i < nb_trees; i++) {
+      evaluate_tree(trees[i], ds);
+	  }
 
     /* Selection */
-    trees = tournament_selection(trees, nb_trees, 10);
+    trees = tournament_selection(trees, nb_trees, nb_trees * 0.1);
 
 	  /* Show the best */
 	  tree_t *best = best_tree(trees, nb_trees);
 	  printf("iter[%d] score: %f\t error:%f\n", iter, best->score, best->error);
+
+	  /* for (int i = 0; i < nb_trees; i++) { */
+	  /*   const tree_t *t = trees[i]; */
+	  /*   char *t_str = tree_string(t); */
+    /*   printf("score: %f\t error:%f \t %s\n", t->score, t->error, t_str); */
+    /*   free(t_str); */
+	  /* } */
+	  /* printf("----------\n"); */
 
 	  iter++;
 	}
@@ -1117,6 +1187,7 @@ void test_suite() {
 
   /* MUTATION OPERATORS */
   MU_ADD_TEST(test_point_mutation);
+  MU_ADD_TEST(test_subtree_mutation);
 
   /* CROSSOVER OPERATORS */
   MU_ADD_TEST(test_point_crossover);

@@ -272,15 +272,14 @@ void node_delete(node_t *n) {
 static void node_copy_traverse(const node_t *src, node_t *des) {
   /* General */
   des->type = src->type;
-  des->parent = src->parent;
-  des->nth_child = src->nth_child;
+  /* des->parent = src->parent; */
+  /* des->nth_child = src->nth_child; */
 
   /* Terminal node specific */
   des->data_type = src->data_type;
   des->value = src->value;
   if (src->input_name) {
-    des->input_name = malloc(sizeof(char) * strlen(src->input_name) + 1);
-    strcpy(des->input_name, src->input_name);
+    des->input_name = malloc_string(src->input_name);
   }
   if (src->eval_data) {
     des->eval_data = src->eval_data;
@@ -292,6 +291,8 @@ static void node_copy_traverse(const node_t *src, node_t *des) {
   if (des->arity != -1) {
     for (int i = 0; i < des->arity; i++) {
       des->children[i] = node_new();
+      des->children[i]->parent = des;
+      des->children[i]->nth_child = i;
       node_copy_traverse(src->children[i], des->children[i]);
     }
   }
@@ -791,6 +792,8 @@ void subtree_mutation(const function_set_t *fs,
     printf("Parent is NULL!\n");
   }
   parent->children[nth_child] = new_subtree->root;
+  new_subtree->root->parent = parent;
+  new_subtree->root->nth_child = nth_child;
 
   free(new_subtree);
   node_delete(subtree);
@@ -838,6 +841,7 @@ tree_t **tournament_selection(tree_t **trees,
                               const size_t t_size) {
   tree_t **new_trees = malloc(sizeof(tree_t *) * nb_trees);
 
+  /* Tournamenet selection */
   for (int i = 0; i < nb_trees; i++) {
     /* Form tournament - keep best */
     int idx = randi(0, nb_trees);
@@ -852,6 +856,7 @@ tree_t **tournament_selection(tree_t **trees,
     new_trees[i] = tree_copy(best);
   }
 
+  /* Delete old generation */
   for (int i = 0; i < nb_trees; i++) {
     tree_delete(trees[i]);
   }
