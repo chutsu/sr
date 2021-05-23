@@ -12,8 +12,13 @@
 #define MAX_ARITY 10
 #define MAX_TREE_SIZE 500
 
+/* #include <iostream> */
+/* #include <random> */
+/* std::random_device device; */
+/* std::mt19937 mt_generator(device()); */
+
 /******************************************************************************
- *                                  UTIL
+ *                                COMMON
  ******************************************************************************/
 
 /* LOG */
@@ -32,12 +37,22 @@
 
 int randi(int ub, int lb) { return rand() % lb + ub; }
 
-float randf(float a, float b) {
-  float random = ((float) rand()) / (float) RAND_MAX;
-  float diff = b - a;
-  float r = random * diff;
-  return a + r;
+double randf(double lb, double ub) {
+  double random = ((double) rand()) / (double) RAND_MAX;
+  double diff = ub - lb;
+  double r = random * diff;
+  return lb + r;
 }
+
+/* int randi(int lb, int ub) { */
+/* 	std::uniform_int_distribution<int> mt_rand(lb, ub); */
+/* 	return mt_rand(mt_generator); */
+/* } */
+
+/* double randf(double lb, double ub) { */
+/* 	std::uniform_real_distribution<double> mt_rand(lb, ub); */
+/* 	return mt_rand(mt_generator); */
+/* } */
 
 int fltcmp(const double f1, const double f2) {
   if (fabs(f1 - f2) <= 0.0001) {
@@ -50,7 +65,7 @@ int fltcmp(const double f1, const double f2) {
 }
 
 char *malloc_string(const char *s) {
-  char *retval = malloc(sizeof(char) * strlen(s) + 1);
+  char *retval = (char *) malloc(sizeof(char) * strlen(s) + 1);
   strcpy(retval, s);
   return retval;
 }
@@ -61,7 +76,7 @@ char *malloc_string(const char *s) {
 
 struct stack_t {
   void *data[MAX_TREE_SIZE];
-  size_t size;
+  int size;
 } typedef stack_t;
 
 void stack_setup(stack_t *s) {
@@ -82,7 +97,7 @@ void *stack_pop(stack_t *s) {
 }
 
 /******************************************************************************
- *                                FUNCTION SET
+ *                              FUNCTION SET
  ******************************************************************************/
 
 /* Function Types */
@@ -217,7 +232,7 @@ typedef struct node_t {
 } node_t;
 
 node_t *node_new() {
-  node_t *n = malloc(sizeof(node_t));
+  node_t *n = (node_t *) malloc(sizeof(node_t));
 
   /* General */
   n->type = -1;
@@ -386,8 +401,7 @@ node_t *node_new_input(char *input_name) {
   node_t *n = node_new();
   n->type = TERM_NODE;
   n->data_type = INPUT;
-  n->input_name = malloc(sizeof(char) * strlen(input_name) + 1);
-  strcpy(n->input_name, input_name);
+  n->input_name = malloc_string(input_name);
 	return n;
 }
 
@@ -403,21 +417,21 @@ node_t *node_new_eval(size_t size) {
   node_t *n = node_new();
   n->type = TERM_NODE;
   n->data_type = EVAL;
-  n->eval_data = malloc(sizeof(double) * size);
+  n->eval_data = (double *) malloc(sizeof(double) * size);
 	return n;
 }
 
 node_t *random_func(const function_set_t *fs) {
   assert(fs != NULL);
   assert(fs->length > 1);
-  const int idx = randi(0, fs->length);
+  const int idx = randi(0, fs->length - 1);
   return node_new_func(fs->funcs[idx], fs->arity[idx]);
 }
 
 node_t *random_term(const terminal_set_t *ts) {
   assert(ts != NULL);
   assert(ts->length > 1);
-  const int idx = randi(0, ts->length);
+  const int idx = randi(0, ts->length - 1);
   const terminal_t *term = &ts->terms[idx];
 
   switch (term->type) {
@@ -449,7 +463,7 @@ typedef struct tree_t {
 } tree_t;
 
 tree_t *tree_new() {
-  tree_t *t = malloc(sizeof(tree_t));
+  tree_t *t = (tree_t *) malloc(sizeof(tree_t));
   t->root = NULL;
   t->size = 0;
   t->depth = 0;
@@ -497,13 +511,15 @@ static void tree_string_traverse(const node_t *n, char *buf, size_t buf_len) {
 }
 
 char *tree_string(const tree_t *t) {
-  /* Traverse tree to build string */
   char buf[9046] = {0};
-  tree_string_traverse(t->root, buf, 0);
 
-  /* Remove trailing white space */
-  if (buf[strlen(buf) - 1] == ' ') {
-    buf[strlen(buf) - 1] = '\0';
+  if (t->root) {
+    tree_string_traverse(t->root, buf, 0);
+
+    /* Remove trailing white space */
+    if (buf[strlen(buf) - 1] == ' ') {
+      buf[strlen(buf) - 1] = '\0';
+    }
   }
 
   return malloc_string(buf);
@@ -695,10 +711,10 @@ static void tree_stack_traverse(node_t *n, stack_t *s) {
     return;
   }
 
-  stack_push(s, n);
   for (int i = 0; i < n->arity; i++) {
     tree_stack_traverse(n->children[i], s);
   }
+  stack_push(s, n);
 }
 
 void tree_stack(const tree_t *t, stack_t *s) {
@@ -739,8 +755,7 @@ static void mutate_term_node(const terminal_set_t *ts, node_t *n) {
   node_t *new_term = random_term(ts);
 	if (new_term->data_type == INPUT) {
 		n->data_type = INPUT;
-		n->input_name = malloc(sizeof(char) * strlen(new_term->input_name) + 1);
-		strcpy(n->input_name, new_term->input_name);
+		n->input_name = malloc_string(new_term->input_name);
 	} else if (new_term->data_type == CONST) {
 		n->data_type = CONST;
 		n->value = new_term->value;
@@ -753,11 +768,11 @@ static void mutate_func_node(const function_set_t *fs, node_t *n) {
 
 try_again:
   {
-    int i = randi(0, fs->length);
-    if (fs->arity[i] != n->arity && attempts < 20) {
+    int i = randi(0, fs->length - 1);
+    if (fs->arity[i] != n->arity && attempts < 1000) {
       attempts++;
       goto try_again;
-    } else if (attempts >= 20) {
+    } else if (attempts >= 1000) {
       FATAL("Failed to get a function with an arity of %d!", n->arity);
     }
     n->function = fs->funcs[i];
@@ -767,7 +782,7 @@ try_again:
 void point_mutation(const function_set_t *fs,
                     const terminal_set_t *ts,
                     tree_t *t) {
-  const int idx = randi(0, t->size);
+  const int idx = randi(0, t->size - 1);
   node_t *n = tree_get_node(t, idx);
 
   if (n->type == TERM_NODE) {
@@ -782,18 +797,17 @@ void point_mutation(const function_set_t *fs,
 void subtree_mutation(const function_set_t *fs,
                       const terminal_set_t *ts,
                       tree_t *t) {
-  const int index = randi(1, t->size - 1);
+  const int index = randi(0, t->size - 1);
   node_t *subtree = tree_get_node(t, index);
 
-  tree_t *new_subtree = tree_generate(FULL, fs, ts, 2);
+  tree_t *new_subtree = tree_generate(GROW, fs, ts, 1);
   node_t *parent = subtree->parent;
   const int nth_child = subtree->nth_child;
-  if (parent == NULL) {
-    printf("Parent is NULL!\n");
-  }
+  /* printf("nth_child: %d\n", nth_child); */
   parent->children[nth_child] = new_subtree->root;
   new_subtree->root->parent = parent;
   new_subtree->root->nth_child = nth_child;
+  tree_update(t);
 
   free(new_subtree);
   node_delete(subtree);
@@ -805,28 +819,23 @@ void subtree_mutation(const function_set_t *fs,
 
 void point_crossover(tree_t *t1, tree_t *t2) {
   const int t1_pt = randi(1, t1->size - 1);
-  const int t2_pt = randi(1, t2->size - 1);
-
   node_t *t1_subtree = tree_get_node(t1, t1_pt);
+
+  const int t2_pt = randi(2, t2->size - 1);
   node_t *t2_subtree = tree_get_node(t2, t2_pt);
 
-  node_t *t1_parent = t1_subtree->parent;
-  node_t *t2_parent = t2_subtree->parent;
   const int t1_nth_child = t1_subtree->nth_child;
   const int t2_nth_child = t2_subtree->nth_child;
+  node_t *t1_parent = t1_subtree->parent;
+  node_t *t2_parent = t2_subtree->parent;
 
-  t1_subtree->parent = t2_parent;
-  t2_subtree->parent = t1_parent;
-  t1_subtree->nth_child = t2_nth_child;
-  t2_subtree->nth_child = t1_nth_child;
+  /* t1_subtree->parent = t2_parent; */
+  /* t2_subtree->parent = t1_parent; */
+  /* t1_subtree->nth_child = t2_nth_child; */
+  /* t2_subtree->nth_child = t1_nth_child; */
+
   t1_parent->children[t1_nth_child] = t2_subtree;
   t2_parent->children[t2_nth_child] = t1_subtree;
-
-  /* t1_parent->children[t1_nth_child] = t2_subtree; */
-  /* t2_parent->children[t2_nth_child] = t1_subtree; */
-
-  /* t1_parent->children[t1_nth_child] = t2_subtree; */
-  /* t2_parent->children[t2_nth_child] = t1_subtree; */
 
 	tree_update(t1);
 	tree_update(t2);
@@ -837,17 +846,17 @@ void point_crossover(tree_t *t1, tree_t *t2) {
  ******************************************************************************/
 
 tree_t **tournament_selection(tree_t **trees,
-                              const size_t nb_trees,
-                              const size_t t_size) {
-  tree_t **new_trees = malloc(sizeof(tree_t *) * nb_trees);
+                              const int nb_trees,
+                              const int t_size) {
+  tree_t **new_trees = (tree_t **) malloc(sizeof(tree_t *) * nb_trees);
 
   /* Tournamenet selection */
   for (int i = 0; i < nb_trees; i++) {
     /* Form tournament - keep best */
-    int idx = randi(0, nb_trees);
+    int idx = randi(0, nb_trees - 1);
     tree_t *best = trees[idx];
-    for (int j = 1; j < t_size; j++) {
-      tree_t *t = trees[randi(0, nb_trees)];
+    for (int j = 0; j < t_size; j++) {
+      tree_t *t = trees[randi(0, nb_trees - 1)];
       if (t->score < best->score) {
         best = t;
       }
@@ -948,11 +957,11 @@ char **csv_fields(const char *fp, int *nb_fields) {
 
 	/* Parse fields */
 	*nb_fields = csv_cols(fp);
-	char **fields = malloc(sizeof(char *) * *nb_fields);
+	char **fields = (char **) malloc(sizeof(char *) * *nb_fields);
 	int field_idx = 0;
 	char field_name[100] = {0};
 
-	for (int i = 0; i < strlen(field_line); i++) {
+	for (size_t i = 0; i < strlen(field_line); i++) {
 		char c = field_line[i];
 
 		/* Ignore # and ' ' */
@@ -962,8 +971,7 @@ char **csv_fields(const char *fp, int *nb_fields) {
 
 		if (c == ',' || c == '\n') {
 			/* Add field name to fields */
-			fields[field_idx] = malloc(sizeof(char) * strlen(field_name) + 1);
-			strcpy(fields[field_idx], field_name);
+			fields[field_idx] = malloc_string(field_name);
 			memset(field_name, '\0', sizeof(char) * 100);
 			field_idx++;
 		} else {
@@ -982,9 +990,9 @@ double **csv_data(const char *fp, int *nb_rows, int *nb_cols) {
 	/* Initialize memory for csv data */
 	*nb_rows = csv_rows(fp);
 	*nb_cols = csv_cols(fp);
-	double **data = malloc(sizeof(double *) * *nb_cols);
+	double **data = (double **) malloc(sizeof(double *) * *nb_cols);
 	for (int i = 0; i < *nb_cols; i++) {
-		data[i] = malloc(sizeof(double) * *nb_rows);
+		data[i] = (double *) malloc(sizeof(double) * *nb_rows);
 	}
 
 	/* Load file */
@@ -1006,7 +1014,7 @@ double **csv_data(const char *fp, int *nb_rows, int *nb_cols) {
 		}
 
 		char entry[100] = {0};
-		for (int i = 0; i < strlen(line); i++) {
+		for (size_t i = 0; i < strlen(line); i++) {
 			char c = line[i];
 			if (c == ' ') {
 				continue;
@@ -1041,7 +1049,7 @@ struct dataset_t {
 } typedef dataset_t;
 
 dataset_t *dataset_load(const char *fp, const char *predict) {
-	dataset_t *ds = malloc(sizeof(dataset_t));
+	dataset_t *ds = (dataset_t *) malloc(sizeof(dataset_t));
 
 	/* Load data */
 	ds->data = csv_data(fp, &ds->nb_rows, &ds->nb_cols);
@@ -1057,8 +1065,7 @@ dataset_t *dataset_load(const char *fp, const char *predict) {
 	}
 
 	/* Set field to predict */
-	ds->predict = malloc(sizeof(char) * strlen(predict) + 1);
-	strcpy(ds->predict, predict);
+	ds->predict = malloc_string(predict);
 
   return ds;
 }
@@ -1127,11 +1134,10 @@ void evaluate_resolve_node(const node_t *node, const dataset_t *ds, double *arg)
 			arg[i] = ds->data[field_idx][i];
 		}
 
-
   } else if (node->data_type == EVAL) {
 		/* Load eval data */
 		for (int i = 0; i < ds->nb_rows; i++) {
-			/* arg[i] = node->eval_data; */
+			arg[i] = node->eval_data[i];
 		}
 
   } else {
@@ -1140,15 +1146,15 @@ void evaluate_resolve_node(const node_t *node, const dataset_t *ds, double *arg)
 }
 
 #define UNARY_FUNC(FUNC) \
-  node_t *n_arg0 = stack_pop(&eval_stack); \
+  node_t *n_arg0 = (node_t *) stack_pop(&eval_stack); \
   evaluate_resolve_node(n_arg0, ds, arg0); \
   for (int i = 0; i < ds->nb_rows; i++) { \
     eval->eval_data[i] = FUNC(arg0[i]); \
   }
 
 #define BINARY_OP(OPERATOR) \
-  node_t *n_arg0 = stack_pop(&eval_stack); \
-  node_t *n_arg1 = stack_pop(&eval_stack); \
+  node_t *n_arg0 = (node_t *) stack_pop(&eval_stack); \
+  node_t *n_arg1 = (node_t *) stack_pop(&eval_stack); \
   evaluate_resolve_node(n_arg0, ds, arg0); \
   evaluate_resolve_node(n_arg1, ds, arg1); \
   for (int i = 0; i < ds->nb_rows; i++) { \
@@ -1156,8 +1162,8 @@ void evaluate_resolve_node(const node_t *node, const dataset_t *ds, double *arg)
   }
 
 #define BINARY_FUNC(FUNC) \
-  node_t *n_arg0 = stack_pop(&eval_stack); \
-  node_t *n_arg1 = stack_pop(&eval_stack); \
+  node_t *n_arg0 = (node_t *) stack_pop(&eval_stack); \
+  node_t *n_arg1 = (node_t *) stack_pop(&eval_stack); \
   evaluate_resolve_node(n_arg0, ds, arg0); \
   evaluate_resolve_node(n_arg1, ds, arg1); \
   for (int i = 0; i < ds->nb_rows; i++) { \
@@ -1171,12 +1177,14 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
   stack_setup(&eval_stack);
   tree_stack(t, &eq_stack);
 
-	double *arg0 = malloc(sizeof(double) * ds->nb_rows);
-	double *arg1 = malloc(sizeof(double) * ds->nb_rows);
+	double *arg0 = (double *) malloc(sizeof(double) * ds->nb_rows);
+	double *arg1 = (double *) malloc(sizeof(double) * ds->nb_rows);
 	node_t *eval = node_new_eval(ds->nb_rows);
 
-  while (eq_stack.size != 0) {
-    node_t *n = stack_pop(&eq_stack);
+  /* while (eq_stack.size != 0) { */
+    /* node_t *n = stack_pop(&eq_stack); */
+  for (int k = 0; k < eq_stack.size; k++) {
+    node_t *n = (node_t *) eq_stack.data[k];
 
     if (n->type == FUNC_NODE) {
 			switch (n->function) {
@@ -1184,10 +1192,12 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
 			case SUB: {BINARY_OP(-); break;}
 			case MUL: {BINARY_OP(*); break;}
 			case DIV: {BINARY_OP(/); break;}
+			case POW: {BINARY_FUNC(pow); break;}
 			case EXP: {UNARY_FUNC(exp); break;}
 			case LOG: {UNARY_FUNC(log); break;}
 			case SIN: {UNARY_FUNC(sin); break;}
 			case COS: {UNARY_FUNC(cos); break;}
+			default: FATAL("Opps! Function not implemented [%d]\n", n->function);
 			}
       stack_push(&eval_stack, eval);
     } else {
@@ -1201,13 +1211,15 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
   const double n = ds->nb_rows;
   double err_sq = 0.0;
   for (int i = 0; i < n; i++) {
-    err_sq += pow(predicted[i] - expected[i], 2);
+    const double err = predicted[i] - expected[i];
+    err_sq += err * err;
   }
   const double rmse = sqrt(err_sq / n);
 
   /* Set error and score */
   t->error = rmse;
   t->score = rmse + (t->size) * 0.1;
+  /* t->score = rmse; */
 
   /* Clean up */
   free(arg0);
@@ -1217,7 +1229,7 @@ int evaluate_tree(tree_t *t, const dataset_t *ds) {
   return 0;
 }
 
-tree_t *best_tree(tree_t **trees, size_t nb_trees) {
+tree_t *best_tree(tree_t **trees, int nb_trees) {
   tree_t *best = trees[0];
   for (int i = 0; i < nb_trees; i++) {
     if (trees[i]->score <= best->score) {
@@ -1227,6 +1239,5 @@ tree_t *best_tree(tree_t **trees, size_t nb_trees) {
 
   return best;
 }
-
 
 #endif

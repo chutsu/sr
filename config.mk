@@ -4,7 +4,8 @@ TESTS_DIR=$(PWD)/build/tests
 INC_DIR=$(PWD)
 
 # COMPILER SETTINGS
-CC=gcc -Wall -O3 -g -std=c11
+CC=tcc -Wall -O3 -g -std=c11
+# CC=g++ -Wall -O3 -g -std=c++11
 CFLAGS=-I$(INC_DIR)
 LIBS=-L$(BLD_DIR) -lm
 
@@ -22,7 +23,4 @@ COMPILE_TEST_OBJ = \
 
 MAKE_TEST = \
 	echo "TEST [$(shell basename $@)]"; \
-	$(CC) $(CFLAGS) \
-		$(subst $(TESTS_DIR), $(BLD_DIR), $@.o) \
-		-o $@ \
-		$(LIBS)
+		$(CC) $(CFLAGS) $^ -o $@ $(LIBS)

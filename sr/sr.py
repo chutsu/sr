@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
+import os
 import time
 import math
 import random
 import datetime
 import copy
 import unittest
+
+import numpy as np
+from numpy import genfromtxt
+
+from PIL import Image
 
 
 ############################### FUNCTION SET #################################
@@ -319,6 +325,20 @@ def point_mutation(fs, ts, tree):
     tree.update()
     return tree
 
+def subtree_mutation(fs, ts, tree):
+    idx = random.randint(1, tree.size - 1);
+    node = tree.get_node(idx);
+
+    subtree = Tree.generate("GROW", fs, ts, 2)
+    parent = node.parent
+    nth_child = node.nth_child
+    parent.children[nth_child] = subtree.root
+    subtree.root.parent = parent
+
+    tree.update()
+
+    return tree
+
 
 ############################## CROSSOVER ####################################
 def point_crossover(t1, t2):
@@ -361,6 +381,7 @@ def tournament_selection(trees, t_size):
         # Add to new population
         new_gen.append(copy.deepcopy(best_tree))
 
+    del trees
     return new_gen
 
 
@@ -421,16 +442,16 @@ class Config:
 
         # Evolve settings
         self.pop_size = kwargs.get("pop_size", 1000)
-        self.max_iter = kwargs.get("max_iter", 100)
-        self.prob_crossover = kwargs.get("prob_crossover", 0.5)
-        self.prob_mutate = kwargs.get("prob_mutate", 0.2)
+        self.max_iter = kwargs.get("max_iter", 1000)
+        self.prob_crossover = kwargs.get("prob_crossover", 0.8)
+        self.prob_mutate = kwargs.get("prob_mutate", 0.8)
 
 
 def _eval_resolve_node(node, dataset):
     if node.data_type == CONST:
         return [node.data for i in range(dataset["size"])]
     elif node.data_type == INPUT:
-        return dataset["inputs"][node.data]
+        return dataset["data"][node.data]
     elif node.data_type == EVAL:
         return node.data
     else:
@@ -496,7 +517,7 @@ def eval_tree(tree, dataset):
 
         # Calculate RMSE
         predicted = eval_stack.pop().data
-        response = dataset["response"]
+        response = dataset["data"][dataset["predict"]]
         n = dataset["size"]
         err_sq = 0.0
         for i in range(n):
@@ -506,7 +527,7 @@ def eval_tree(tree, dataset):
 
         # Set error and score
         tree.error = rmse
-        tree.score = rmse + (tree.size) * 0.1
+        tree.score = rmse + (tree.size) * 0.2
 
     except Exception:
         # Set error and score
@@ -524,38 +545,213 @@ def regress(config):
                      config.max_depth,
                      config.pop_size)
 
+    best_score = float("inf")
+    stale = 0
+
     for i in range(config.max_iter):
-        # Crossover
-        for idx in range(0, len(pop.trees), 2):
-            if random.uniform(0.0, 1.0) > config.prob_crossover:
-                t1, t2 = point_crossover(pop.trees[idx], pop.trees[idx + 1]);
-                pop.trees[idx] = t1
-                pop.trees[idx + 1] = t2
+        # # Crossover
+        # for idx in range(0, len(pop.trees), 2):
+        #     if random.uniform(0.0, 1.0) < config.prob_crossover:
+        #         t1, t2 = point_crossover(pop.trees[idx], pop.trees[idx + 1]);
+        #         pop.trees[idx] = t1
+        #         pop.trees[idx + 1] = t2
 
         # Mutate
         for j in range(len(pop.trees)):
-            if random.uniform(0.0, 1.0) > config.prob_mutate:
-                t = point_mutation(fs, ts, pop.trees[j])
+            if random.uniform(0.0, 1.0) < config.prob_mutate:
+                # t = point_mutation(fs, ts, pop.trees[j])
+                t = subtree_mutation(fs, ts, pop.trees[j])
                 pop.trees[j] = t
 
         # Evaluate and select
         pop.eval()
-        t_size = int(len(pop.trees) * 0.05)
+        # t_size = int(len(pop.trees) * 0.01)
+        t_size = 2
         pop.trees = tournament_selection(pop.trees, t_size)
 
-        best_tree = pop.best();
+        tree_sizes = []
+        tree_scores = []
+        for t in pop.trees:
+            tree_sizes.append(t.size)
+            if np.isfinite(t.score):
+                tree_scores.append(t.score)
+        mean_tree_size = np.mean(tree_sizes)
+
+        import matplotlib.pylab as plt
+        plt.hist(tree_scores)
+        plt.draw()
+        plt.pause(0.0001)
+        plt.clf()
+
+        best_tree = pop.best()
         status = ""
         status += "iter: %d " % (i)
         status += best_tree.eq_str() + " "
         status += "size: " + str(best_tree.size) + " "
         status += "score: " + str(best_tree.score) + " "
         status += "error: " + str(best_tree.error) + " "
+        status += "mean tree size: " + str(mean_tree_size) + " "
         print(status)
+
+        if best_tree.score < best_score:
+            best_score = best_tree.score
+        else:
+            stale += 1
+
+        if stale >= 5:
+            print("Nuking generation!")
+            pop = Population(config.dataset,
+                             config.fs,
+                             config.ts,
+                             config.max_depth,
+                             config.pop_size)
+            for i in range(int(config.pop_size * 0.1)):
+                pop.trees[i] = copy.deepcopy(best_tree)
+            best_score = float("inf")
+            stale = 0
+
+################################ COMMON #####################################
+
+def quat2rot(q):
+    qw, qx, qy, qz = q
+    qx2 = qx**2
+    qy2 = qy**2
+    qz2 = qz**2
+    qw2 = qw**2
+
+    # Homogeneous form
+    R11 = qw2 + qx2 - qy2 - qz2
+    R12 = 2 * (qx * qy - qw * qz)
+    R13 = 2 * (qx * qz + qw * qy)
+
+    R21 = 2 * (qx * qy + qw * qz)
+    R22 = qw2 - qx2 + qy2 - qz2
+    R23 = 2 * (qy * qz - qw * qx)
+
+    R31 = 2 * (qx * qz - qw * qy)
+    R32 = 2 * (qy * qz + qw * qx)
+    R33 = qw2 - qx2 - qy2 + qz2
+
+    R = np.array([[R11, R12, R13],
+                  [R21, R22, R23],
+                  [R31, R32, R33]])
+
+    return R
+
+############################### APRILGRID ####################################
+
+class AprilGrid:
+    def __init__(self, **kwargs):
+        self.tag_rows = kwargs.get("tag_rows", 6)
+        self.tag_cols = kwargs.get("tag_cols", 6)
+        self.tag_size = kwargs.get("tag_size", 0.088)
+        self.tag_spacing = kwargs.get("tag_spacing", 0.3)
+
+        self.ts = None
+        self.ids = []
+        self.keypoints = []
+
+        self.estimated = False
+        self.points_CF = []
+        self.q_CF = None
+        self.r_CF = None
+        self.T_CF = None
+
+        if kwargs.get("csv", None):
+            self.load(kwargs["csv"])
+
+    def load(self, file_path):
+        data = genfromtxt(file_path, delimiter=",", skip_header=1)
+
+        for line in data:
+            configured = line[0]
+            self.tag_rows = line[1]
+            self.tag_cols = line[2]
+            self.tag_size = line[3]
+            self.tag_spacing = line[4]
+
+            self.ts = line[5]
+            self.ids.append(line[6])
+            self.keypoints.append((line[7], line[8]))
+
+            self.estimated = line[9]
+            if self.estimated:
+                p_CF = line[10:13]
+                self.points_CF.append(p_CF)
+
+                self.q_CF = line[13:17]
+                self.r_CF = line[17:22]
+
+                self.T_CF = np.eye(4)
+                self.T_CF[0:3, 3] = self.r_CF
+                self.T_CF[0:3, 0:3] = quat2rot(self.q_CF)
+
+
+################################ DATASET #####################################
+
+def load_calib_data(data_path):
+    print("Loading calibration data [%s]" % data_path)
+
+    # Paths
+    cam0_dir = os.path.join(data_path, "cam0")
+    cam1_dir = os.path.join(data_path, "cam1")
+    grid0_dir = os.path.join(data_path, "grid0")
+    grid0_cam0_data = os.path.join(grid0_dir, "cam0", "data")
+    grid0_cam0_csvs = os.listdir(grid0_cam0_data)
+    grid0_cam0_csvs.sort()
+
+    # Get cam0 resolution
+    print("-- Obtaining cam0 resolution")
+    cam0_data = os.path.join(cam0_dir, "data")
+    cam0_imgs = os.listdir(cam0_data)
+    img = Image.open(os.path.join(cam0_data, cam0_imgs[0]))
+    cam0_resolution = img.size
+
+    # Load AprilGrids observed from cam0
+    print("-- Loading Aprilgrids observed from cam0")
+    cam0_grids = []
+    for csv in grid0_cam0_csvs:
+        csv_path = os.path.join(grid0_cam0_data, csv)
+        cam0_grids.append(AprilGrid(csv=csv_path))
+
+    # Forming calibration problem
+    measured_x = []
+    measured_y = []
+    projected_x = []
+    projected_y = []
+
+    data_size = 0
+    for grid in cam0_grids[0:1]:
+        for i in range(len(grid.ids)):
+            kp = grid.keypoints[i]
+            measured_x.append(kp[0])
+            measured_y.append(kp[1])
+
+            p_CFi = grid.points_CF[i]
+            px = p_CFi[0] / p_CFi[2]
+            py = p_CFi[1] / p_CFi[2]
+            projected_x.append(px)
+            projected_y.append(py)
+
+            data_size += 1
+
+    dataset = {
+        "data": {
+            "projected_x": projected_x,
+            "projected_y": projected_y,
+            "measured_x": measured_x,
+            "measured_y": measured_y,
+        },
+        "predict": "measured_x",
+        "size": data_size
+    }
+
+    return dataset
 
 
 ############################### UNIT-TESTS ###################################
 class TestNode(unittest.TestCase):
-    def test_node(self):
+    def test_constructor(self):
         n = Node()
         self.assertTrue(n.type == -1)
         self.assertTrue(n.parent is None)
@@ -663,7 +859,7 @@ class TestSelection(unittest.TestCase):
             print("-" * 78)
 
 class TestPopulation(unittest.TestCase):
-    def test_population(self):
+    def test_constructor(self):
         dataset = {}
         max_depth = 2
         pop_size = 10
@@ -676,8 +872,8 @@ class TestPopulation(unittest.TestCase):
 
     def test_eval(self):
         dataset = {
-            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "data": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                     "y": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]},
             "size": 10
         }
         max_depth = 2
@@ -690,8 +886,8 @@ class TestPopulation(unittest.TestCase):
 
     def test_best(self):
         dataset = {
-            "inputs": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]},
-            "response": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+            "data": {"x": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                     "y": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]},
             "size": 10
         }
         max_depth = 2
@@ -711,7 +907,8 @@ class TestRegression(unittest.TestCase):
         x_data = range(10)
         y_data = [x + 1.0 for x in x_data]
         dataset = {
-            "inputs": {"x": x_data},
+            "data": {"x": x_data,
+                     "y": y_data},
             "response": y_data,
             "size": 10
         }
@@ -745,14 +942,80 @@ class TestRegression(unittest.TestCase):
         x_data = range(10)
         y_data = [math.pow(x, 2) + 10.0 for x in x_data]
         dataset = {
-            "inputs": {"x": x_data},
-            "response": y_data,
+            "data": {"x": x_data, "y": y_data},
+            "predict": "y",
             "size": 10
         }
         config = Config(dataset, fs, ts)
         regress(config)
 
+class TestAprilGrid(unittest.TestCase):
+    def test_constructor(self):
+        grid = AprilGrid()
+        self.assertTrue(grid.tag_rows == 6)
+        self.assertTrue(grid.tag_cols == 6)
+        self.assertTrue(grid.tag_size == 0.088)
+        self.assertTrue(grid.tag_spacing == 0.3)
+
+        self.assertTrue(grid.ts == None)
+        self.assertTrue(len(grid.ids) == 0)
+        self.assertTrue(len(grid.keypoints) == 0)
+
+        self.assertTrue(grid.estimated == False)
+        self.assertTrue(len(grid.points_CF) == 0)
+        self.assertTrue(grid.T_CF is None)
+
+    def test_load(self):
+        f = "/data/intel_d435i/calib_data/grid0/cam0/data/1565355669443719238.csv"
+        grid = AprilGrid()
+        grid.load(f)
+
+class TestDataset(unittest.TestCase):
+    def test_load_calib_data(self):
+        data_path = "/data/intel_d435i/calib_data/"
+        dataset = load_calib_data(data_path)
+
+        self.assertTrue(dataset.has_key("data"))
+        self.assertTrue(dataset.has_key("predict"))
+        self.assertTrue(dataset.has_key("size"))
+
 
 if __name__ == "__main__":
     random.seed(datetime.datetime.now())
-    unittest.main()
+    # unittest.main()
+
+    data_path = "/data/intel_d435i/calib_data/"
+    dataset = load_calib_data(data_path)
+
+    fs = [
+        {"type": "ADD", "arity": 2},
+        {"type": "SUB", "arity": 2},
+        {"type": "MUL", "arity": 2},
+        {"type": "DIV", "arity": 2}
+        # {"type": "POW", "arity": 2},
+        # {"type": "EXP", "arity": 1},
+        # {"type": "LOG", "arity": 1}
+    ]
+
+    ts = [
+        {"type": CONST, "value": 0.0},
+        {"type": CONST, "value": 1.0},
+        {"type": CONST, "value": 2.0},
+        {"type": CONST, "value": 3.0},
+        {"type": CONST, "value": 4.0},
+        {"type": CONST, "value": 5.0},
+        {"type": CONST, "value": 6.0},
+        {"type": CONST, "value": 7.0},
+        {"type": CONST, "value": 8.0},
+        {"type": CONST, "value": 9.0},
+        {"type": CONST, "value": 10.0},
+        {"type": CONST, "value": 640.0},
+        {"type": CONST, "value": 480.0},
+        {"type": INPUT, "value": "projected_x"},
+        {"type": INPUT, "value": "projected_y"},
+        # {"type": INPUT, "value": "y"}
+    ];
+    config = Config(dataset, fs, ts)
+
+    print("predicting: %s" % (dataset["predict"]))
+    regress(config)
